@@ -2,12 +2,18 @@ import chalk from 'chalk';
 import ms from 'ms';
 import table from '../../util/output/table';
 import Client from '../../util/client';
+import { targetCommand } from './command';
+import { getFlagsSpecification } from '../../util/get-flags-specification';
 import { getCommandName } from '../../util/pkg-name';
+import { parseArguments } from '../../util/get-args';
 import type { ProjectLinked } from '@vercel-internals/types';
 import type { CustomEnvironment } from '../../util/target/types';
 
+//type FlagsSpecification = ReturnType<typeof getFlagsSpecification>;
+
 export default async function list(
   client: Client,
+  //parsedArguments: ReturnType<typeof parseArguments<typeof targetCommand['options']>>,
   argv: any,
   args: string[],
   link: ProjectLinked

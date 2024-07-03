@@ -12,6 +12,6 @@
   "include": ["./types", "src/**/*"],
   "exclude": ["templates/*"],
   "ts-node": {
-    "swc": true // https://typestrong.org/ts-node/docs/swc/
+    //"swc": true // https://typestrong.org/ts-node/docs/swc/
   }
 }

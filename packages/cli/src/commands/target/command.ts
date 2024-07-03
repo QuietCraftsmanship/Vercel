@@ -1,7 +1,7 @@
 import { Command } from '../help';
 import { packageName } from '../../util/pkg-name';
 
-export const targetCommand: Command = {
+export const targetCommand = {
   name: 'targets',
   description: 'Manage your Vercel Project\'s "targets" (custom environments).',
   arguments: [
@@ -39,4 +39,4 @@ export const targetCommand: Command = {
       value: `${packageName} project ls --next 1584722256178`,
     },
   ],
-};
+} as const satisfies Command;

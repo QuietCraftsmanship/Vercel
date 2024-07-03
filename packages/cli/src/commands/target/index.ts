@@ -1,40 +1,38 @@
 import Client from '../../util/client';
-import getArgs from '../../util/get-args';
+import { parseArguments } from '../../util/get-args';
 import getInvalidSubcommand from '../../util/get-invalid-subcommand';
 import handleError from '../../util/handle-error';
 import { help } from '../help';
 import list from './list';
 import { targetCommand } from './command';
 import { getLinkedProject } from '../../util/projects/link';
+import { getFlagsSpecification } from '../../util/get-flags-specification';
 
 const COMMAND_CONFIG = {
   ls: ['ls', 'list'],
 };
 
 export default async function main(client: Client) {
-  let argv: any;
-  let subcommand: string | string[];
+  let parsedArguments;
+  const flagsSpecification = getFlagsSpecification(targetCommand.options);
 
   try {
-    argv = getArgs(client.argv.slice(2), {
-      '--next': Number,
-      '-N': '--next',
-    });
+    parsedArguments = parseArguments(client.argv.slice(2), flagsSpecification);
   } catch (error) {
     handleError(error);
     return 1;
   }
+  console.log(parsedArguments.flags);
 
-  if (argv['--help']) {
+  if (parsedArguments.flags['--help']) {
     client.output.print(
       help(targetCommand, { columns: client.stderr.columns })
     );
     return 2;
   }
 
-  argv._ = argv._.slice(1);
-  subcommand = argv._[0] || 'list';
-  const args = argv._.slice(1);
+  const subcommand = parsedArguments.args[1] || 'list';
+  const args = parsedArguments.args.slice(2);
   const { cwd, output } = client;
   const link = await getLinkedProject(client, cwd);
 
@@ -51,7 +49,7 @@ export default async function main(client: Client) {
   switch (subcommand) {
     case 'ls':
     case 'list':
-      return await list(client, argv, args, link);
+      return await list(client, parsedArguments.args, args, link);
     default:
       output.error(getInvalidSubcommand(COMMAND_CONFIG));
       client.output.print(

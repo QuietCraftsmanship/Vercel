@@ -8,7 +8,7 @@ type ArgOptions = {
 type Handler = (value: string) => any;
 
 interface Spec {
-  [key: string]: string | Handler | [Handler];
+  [key: string]: string | Handler | [Handler] | undefined;
 }
 
 /**
@@ -51,12 +51,10 @@ export function parseArguments<T extends Spec>(
 ) {
   // currently parseArgument (and arg as a whole) will hang
   // if there are cycles in the flagsSpecification
-  const { _: positional, ...rest } = arg(
-    Object.assign({}, getCommonArgs(), flagsSpecification),
-    {
-      ...parserOptions,
-      argv: args,
-    }
-  );
+  const combinedArgs = Object.assign({}, getCommonArgs(), flagsSpecification);
+  const { _: positional, ...rest } = arg(combinedArgs, {
+    ...parserOptions,
+    argv: args,
+  });
   return { args: positional, flags: rest };
 }
