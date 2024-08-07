@@ -1,12 +1,12 @@
 import { Command } from '../help';
 import { packageName } from '../../util/pkg-name';
 
-export const listCommand: Command = {
+export const listCommand = {
   name: 'list',
-  description: 'List app deployments for an app.',
+  description: 'List deployments for a project.',
   arguments: [
     {
-      name: 'app',
+      name: 'project',
       required: false,
     },
   ],
@@ -14,7 +14,7 @@ export const listCommand: Command = {
     {
       name: 'meta',
       description:
-        'Filter deployments by metadata (e.g.: `-m KEY=value`). Can appear many times.',
+        'Filter deployments by metadata (e.g.: `-m KEY=value`). Can appear many times',
       argument: 'KEY=value',
       shorthand: null,
       type: [String],
@@ -22,8 +22,7 @@ export const listCommand: Command = {
     },
     {
       name: 'environment',
-      description: '',
-      argument: 'production|preview',
+      description: 'Specify the target deployment environment to filter by',
       shorthand: null,
       type: String,
       deprecated: false,
@@ -35,6 +34,30 @@ export const listCommand: Command = {
       shorthand: 'n',
       type: String,
       deprecated: false,
+    },
+    {
+      name: 'limit',
+      shorthand: null,
+      description:
+        'Number of results to return per page (default: 20, max: 100)',
+      argument: 'NUMBER',
+      type: Number,
+      deprecated: false,
+    },
+    {
+      name: 'prod',
+      shorthand: null,
+      type: Boolean,
+      deprecated: false,
+      description:
+        'List only Production deployments (shorthand for `--environment=production`)',
+    },
+    {
+      name: 'yes',
+      shorthand: 'y',
+      type: Boolean,
+      deprecated: false,
+      description: 'Use default options to skip all prompts',
     },
   ],
   examples: [
@@ -55,4 +78,4 @@ export const listCommand: Command = {
       value: `${packageName} list my-app --next 1584722256178`,
     },
   ],
-};
+} as const satisfies Command;
