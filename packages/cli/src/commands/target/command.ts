@@ -11,8 +11,7 @@ export const inspectSubcommand = {
     },
   ],
   options: [],
-  examples: [
-  ],
+  examples: [],
 } as const;
 
 export const listSubcommand = {
