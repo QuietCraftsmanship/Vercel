@@ -5,10 +5,11 @@ import output from '../../output-manager';
 export function formatProject(
   orgSlug: string,
   projectSlug: string,
+  urlPathSuffix = '',
   options?: LinkOptions
 ) {
   const orgProjectSlug = `${orgSlug}/${projectSlug}`;
-  const projectUrl = `https://vercel.com/${orgProjectSlug}`;
+  const projectUrl = `https://vercel.com/${orgProjectSlug}${urlPathSuffix}`;
   const projectSlugLink = output.link(chalk.bold(orgProjectSlug), projectUrl, {
     fallback: () => chalk.bold(orgProjectSlug),
     color: false,

@@ -1,5 +1,20 @@
 import { packageName } from '../../util/pkg-name';
 
+export const inspectSubcommand = {
+  name: 'inspect',
+  aliases: [],
+  description: 'Displays information related to a project environment',
+  arguments: [
+    {
+      name: 'name|id',
+      required: true,
+    },
+  ],
+  options: [],
+  examples: [
+  ],
+} as const;
+
 export const listSubcommand = {
   name: 'list',
   aliases: ['ls'],
@@ -19,7 +34,7 @@ export const targetCommand = {
   aliases: ['targets'],
   description: 'Manage your Vercel Project\'s "targets" (custom environments).',
   arguments: [],
-  subcommands: [listSubcommand],
+  subcommands: [inspectSubcommand, listSubcommand],
   options: [],
   examples: [],
 } as const;

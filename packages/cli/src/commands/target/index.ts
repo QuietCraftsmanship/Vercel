@@ -3,7 +3,8 @@ import { parseArguments } from '../../util/get-args';
 import getInvalidSubcommand from '../../util/get-invalid-subcommand';
 import { type Command, help } from '../help';
 import list from './list';
-import { listSubcommand, targetCommand } from './command';
+import inspect from './inspect';
+import { inspectSubcommand, listSubcommand, targetCommand } from './command';
 import { getFlagsSpecification } from '../../util/get-flags-specification';
 import { printError } from '../../util/error';
 import output from '../../output-manager';
@@ -11,7 +12,8 @@ import { TargetTelemetryClient } from '../../util/telemetry/commands/target';
 import { getCommandAliases } from '..';
 
 const COMMAND_CONFIG = {
-  ls: getCommandAliases(listSubcommand),
+  inspect: getCommandAliases(inspectSubcommand),
+  list: getCommandAliases(listSubcommand),
 };
 
 export default async function main(client: Client) {
@@ -50,6 +52,14 @@ export default async function main(client: Client) {
   }
 
   switch (subcommand) {
+    case 'inspect':
+      if (needHelp) {
+        telemetry.trackCliFlagHelp('target', 'inspect');
+        printHelp(inspectSubcommand);
+        return 2;
+      }
+      telemetry.trackCliSubcommandList(subcommand);
+      return await inspect(client, args);
     case 'ls':
     case 'list':
       if (needHelp) {
