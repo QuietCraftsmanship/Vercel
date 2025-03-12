@@ -1,14 +1,25 @@
 import chalk from 'chalk';
 import output from '../../output-manager';
 import stamp from '../../util/output/stamp';
+import link from '../../util/output/link';
 import { targetCommand } from './command';
 import { getCommandName } from '../../util/pkg-name';
 import { ensureLink } from '../../util/link/ensure-link';
 import { formatProject } from '../../util/projects/format-project';
-import { formatEnvironment } from '../../util/target/format-environment';
-import type Client from '../../util/client';
-import type { CustomEnvironment } from '@vercel-internals/types';
 import formatDate from '../../util/format-date';
+import { formatBranchMatcher } from '../../util/target/format-branch-matcher';
+import { getCustomEnvironment } from '../../util/target/get-custom-environments';
+import type Client from '../../util/client';
+import type { CustomEnvironmentBranchMatcher } from '@vercel-internals/types';
+
+const BRANCH_MATCHER_TYPE_MAP: Record<
+  CustomEnvironmentBranchMatcher['type'],
+  string
+> = {
+  equals: 'Matches',
+  startsWith: 'Starts with',
+  endsWith: 'Ends with',
+};
 
 export default async function inspect(client: Client, argv: string[]) {
   const { cwd } = client;
@@ -21,25 +32,28 @@ export default async function inspect(client: Client, argv: string[]) {
     return 2;
   }
 
-  const inspectStamp = stamp();
-  const link = await ensureLink(targetCommand.name, client, cwd);
-  if (typeof link === 'number') {
-    return link;
+  const projectLink = await ensureLink(targetCommand.name, client, cwd);
+  if (typeof projectLink === 'number') {
+    return projectLink;
   }
+  client.config.currentTeam = projectLink.org.id;
 
-  console.log(link.project);
-
+  const inspectStamp = stamp();
   const [nameOrId] = argv;
-  const target = link.project.customEnvironments?.find(
-    t => t.slug === nameOrId || t.id === nameOrId
-  );
   const projectSlugLink = formatProject(
-    link.org.slug,
-    link.project.name,
+    projectLink.org.slug,
+    projectLink.project.name,
     '/settings/environments'
   );
+  const target = await getCustomEnvironment(
+    client,
+    projectLink.project.id,
+    nameOrId
+  );
   if (!target) {
-    output.error(`Target "${nameOrId}" was not found under ${projectSlugLink}`);
+    output.error(
+      `Environment "${nameOrId}" was not found under ${projectSlugLink}`
+    );
     return 1;
   }
 
@@ -63,12 +77,23 @@ export default async function inspect(client: Client, argv: string[]) {
   output.print(
     `    ${chalk.cyan('Status')}\t\t${target.branchMatcher ? 'Enabled' : 'Disabled'}\n`
   );
+  if (target.branchMatcher) {
+    output.print(
+      `    ${chalk.cyan('Branch Pattern')}\t${chalk.dim(BRANCH_MATCHER_TYPE_MAP[target.branchMatcher.type])} ${formatBranchMatcher(target.branchMatcher)}\n`
+    );
+  }
 
   output.print('\n');
   output.print(chalk.bold('  Domains\n\n'));
-  output.print(
-    `    ${chalk.cyan('Status')}\t\t${target.branchMatcher ? 'Enabled' : 'Disabled'}\n`
-  );
+  if (!target.domains || target.domains.length === 0) {
+    output.print(`    ${chalk.dim('No Domains Attached')}\n`);
+  } else {
+    for (const domain of target.domains) {
+      output.print(`    ${link(domain.name)}\n`);
+    }
+  }
+
+  output.print('\n');
 
   return 0;
 }

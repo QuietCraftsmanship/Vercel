@@ -1,21 +1,31 @@
 import type Client from '../client';
-import { isObject } from '@vercel/error-utils';
 import type { CustomEnvironment } from '@vercel-internals/types';
+import { isAPIError } from '../errors-ts';
+
+export async function getCustomEnvironment(
+  client: Client,
+  projectId: string,
+  customEnvironmentSlugOrId: string
+) {
+  try {
+    return await client.fetch<CustomEnvironment>(
+      `/projects/${encodeURIComponent(projectId)}/custom-environments/${encodeURIComponent(
+        customEnvironmentSlugOrId
+      )}`
+    );
+  } catch (err) {
+    if (isAPIError(err) && err.status === 404) {
+      return null;
+    }
+    throw err;
+  }
+}
 
 export async function getCustomEnvironments(client: Client, projectId: string) {
-  try {
-    const res = await client.fetch<{ environments: CustomEnvironment[] }>(
-      `/projects/${encodeURIComponent(projectId)}/custom-environments`,
-      { method: 'GET' }
-    );
-    return res.environments;
-  } catch (error) {
-    if (isObject(error) && error.status === 404) {
-      // user is not flagged for custom environments
-      return [];
-    }
-    throw error;
-  }
+  const res = await client.fetch<{ environments: CustomEnvironment[] }>(
+    `/projects/${encodeURIComponent(projectId)}/custom-environments`
+  );
+  return res.environments;
 }
 
 export function pickCustomEnvironment(

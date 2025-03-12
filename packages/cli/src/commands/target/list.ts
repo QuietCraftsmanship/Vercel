@@ -7,26 +7,14 @@ import { getCommandName } from '../../util/pkg-name';
 import { ensureLink } from '../../util/link/ensure-link';
 import { formatProject } from '../../util/projects/format-project';
 import { formatEnvironment } from '../../util/target/format-environment';
+import { formatBranchMatcher } from '../../util/target/format-branch-matcher';
 import type Client from '../../util/client';
 import type {
   CustomEnvironment,
-  CustomEnvironmentBranchMatcher,
   CustomEnvironmentType,
   Project,
 } from '@vercel-internals/types';
-
-function formatBranchMatcher(
-  branchMatcher?: CustomEnvironmentBranchMatcher
-): string {
-  if (branchMatcher?.type === 'equals') {
-    return branchMatcher.pattern;
-  } else if (branchMatcher?.type === 'startsWith') {
-    return `${branchMatcher.pattern}${chalk.dim('*')}`;
-  } else if (branchMatcher?.type === 'endsWith') {
-    return `${chalk.dim('*')}${branchMatcher.pattern}`;
-  }
-  return chalk.dim('No branch configuration');
-}
+import { getCustomEnvironments } from '../../util/target/get-custom-environments';
 
 const TYPE_MAP: Record<CustomEnvironmentType, string> = {
   production: 'Production',
@@ -61,23 +49,13 @@ export default async function list(client: Client, argv: string[]) {
   if (typeof link === 'number') {
     return link;
   }
+  client.config.currentTeam = link.org.id;
 
   const start = Date.now();
   const projectSlugLink = formatProject(link.org.slug, link.project.name);
 
   output.spinner(`Fetching custom environments for ${projectSlugLink}`);
-
-  const url = `/projects/${encodeURIComponent(
-    link.project.id
-  )}/custom-environments`;
-
-  let { environments: result } = (await client.fetch(url, {
-    method: 'GET',
-    accountId: link.org.id,
-  })) as {
-    environments: CustomEnvironment[];
-  };
-
+  let result = await getCustomEnvironments(client, link.project.id);
   output.stopSpinner();
 
   const elapsed = ms(Date.now() - start);
