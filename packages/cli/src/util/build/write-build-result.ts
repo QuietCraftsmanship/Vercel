@@ -10,29 +10,30 @@ import {
   posix,
 } from 'path';
 import {
-  Builder,
-  BuildResultV2,
-  BuildResultV3,
-  File,
-  Files,
+  type Builder,
+  type BuildResultV2,
+  type BuildResultV3,
+  type File,
+  type Files,
   FileFsRef,
-  BuilderV2,
-  BuilderV3,
-  Lambda,
-  PackageJson,
-  Prerender,
+  type BuilderV2,
+  type BuilderV3,
+  type Lambda,
+  type PackageJson,
+  type Prerender,
   download,
   downloadFile,
-  EdgeFunction,
-  BuildResultBuildOutput,
+  type EdgeFunction,
+  type BuildResultBuildOutput,
   getLambdaOptionsFromFunction,
   normalizePath,
+  type TriggerEvent,
 } from '@vercel/build-utils';
 import pipe from 'promisepipe';
 import { merge } from './merge';
 import { unzip } from './unzip';
 import { VERCEL_DIR } from '../projects/link';
-import { fileNameSymbol, VercelConfig } from '@vercel/client';
+import { fileNameSymbol, type VercelConfig } from '@vercel/client';
 
 const { normalize } = posix;
 export const OUTPUT_DIR = join(VERCEL_DIR, 'output');
@@ -41,8 +42,10 @@ export const OUTPUT_DIR = join(VERCEL_DIR, 'output');
  * An entry in the "functions" object in `vercel.json`.
  */
 interface FunctionConfiguration {
+  architecture?: string;
   memory?: number;
   maxDuration?: number;
+  experimentalTriggers?: TriggerEvent[];
 }
 
 export async function writeBuildResult(
@@ -469,14 +472,20 @@ async function writeLambda(
     throw new Error('Malformed `Lambda` - no "files" present');
   }
 
+  const architecture =
+    functionConfiguration?.architecture ?? lambda.architecture;
   const memory = functionConfiguration?.memory ?? lambda.memory;
   const maxDuration = functionConfiguration?.maxDuration ?? lambda.maxDuration;
+  const experimentalTriggers =
+    functionConfiguration?.experimentalTriggers ?? lambda.experimentalTriggers;
 
   const config = {
     ...lambda,
     handler: normalizePath(lambda.handler),
+    architecture,
     memory,
     maxDuration,
+    experimentalTriggers,
     filePathMap,
     type: undefined,
     files: undefined,
@@ -591,7 +600,7 @@ export async function* findDirs(
  * and returns them in a JSON serializable map of repo root
  * relative paths to Lambda destination paths.
  */
-function filesWithoutFsRefs(
+export function filesWithoutFsRefs(
   files: Files,
   repoRootPath: string
 ): { files: Files; filePathMap?: Record<string, string> } {
@@ -600,7 +609,9 @@ function filesWithoutFsRefs(
   for (const [path, file] of Object.entries(files)) {
     if (file.type === 'FileFsRef') {
       if (!filePathMap) filePathMap = {};
-      filePathMap[path] = relative(repoRootPath, file.fsPath);
+      filePathMap[normalizePath(path)] = normalizePath(
+        relative(repoRootPath, file.fsPath)
+      );
     } else {
       out[path] = file;
     }

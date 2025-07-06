@@ -13,6 +13,10 @@ import { validate } from './validation';
 export const BaseFunctionConfigSchema = {
   type: 'object',
   properties: {
+    architecture: {
+      type: 'string',
+      enum: ['x86_64', 'arm64'],
+    },
     runtime: { type: 'string' },
     memory: { type: 'number' },
     maxDuration: { type: 'number' },
@@ -27,13 +31,16 @@ export const BaseFunctionConfigSchema = {
         },
       ],
     },
+    preferredRegion: {
+      oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
+    },
   },
 } as const;
 
 export type BaseFunctionConfig = FromSchema<typeof BaseFunctionConfigSchema>;
 
 export function getConfig<
-  T extends JSONSchema = typeof BaseFunctionConfigSchema
+  T extends JSONSchema = typeof BaseFunctionConfigSchema,
 >(project: Project, sourcePath: string, schema?: T): FromSchema<T> | null {
   const sourceFile = project.addSourceFileAtPath(sourcePath);
   const configNode = getConfigNode(sourceFile);

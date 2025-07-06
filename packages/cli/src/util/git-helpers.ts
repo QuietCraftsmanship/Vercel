@@ -30,13 +30,14 @@ const DEFAULT_GIT_EXEC_OPTS = {
  *
  * @throws {Error} Can throw an error if `opts.unsafe` is set to `true`
  */
-export function getGitDirectory(opts: GitExecOptions): string | null {
+function getGitDirectory(opts: GitExecOptions): string | null {
   const { cwd, unsafe } = { ...DEFAULT_GIT_EXEC_OPTS, ...opts };
 
   try {
     const gitConfigPath = execSync('git rev-parse --git-dir', {
       cwd,
       encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
     });
 
     return gitConfigPath;

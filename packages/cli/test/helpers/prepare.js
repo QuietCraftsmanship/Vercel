@@ -103,7 +103,7 @@ module.exports = async function prepare(session, binaryPath, tmpFixturesDir) {
       }),
       'vercel.json': JSON.stringify({
         version: 2,
-        devCommand: `${binaryPath} dev`,
+        devCommand: `${binaryPath} dev --token ${process.env.VERCEL_TOKEN} --scope ${process.env.VERCEL_TEAM_ID}`,
       }),
     },
     'build-fail-on-recursion-command': {
@@ -203,21 +203,6 @@ module.exports = async function prepare(session, binaryPath, tmpFixturesDir) {
       'dir/another.html': '<h1>hello another</h1>',
       'dir/now.json': JSON.stringify({
         name: 'nested-level',
-      }),
-    },
-    'build-secret': {
-      'package.json': JSON.stringify({
-        private: true,
-        scripts: {
-          build: 'mkdir public && echo $MY_SECRET > public/index.txt',
-        },
-      }),
-      'now.json': JSON.stringify({
-        build: {
-          env: {
-            MY_SECRET: '@mysecret',
-          },
-        },
       }),
     },
     'api-env': {
@@ -403,6 +388,9 @@ module.exports = async function prepare(session, binaryPath, tmpFixturesDir) {
       'vercel.json': '{"builds":[{"src":"*.html","use":"@vercel/static"}]}',
     },
     'project-sensitive-env-vars': {
+      'package.json': '{}',
+    },
+    'project-override-env-vars': {
       'package.json': '{}',
     },
     'dev-proxy-headers-and-env': {

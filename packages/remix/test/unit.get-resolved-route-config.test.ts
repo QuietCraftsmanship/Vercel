@@ -1,12 +1,13 @@
+import { describe, it, expect } from 'vitest';
 import { getResolvedRouteConfig } from '../src/utils';
-import type {
-  ConfigRoute,
-  RouteManifest,
-} from '@remix-run/dev/dist/config/routes';
+import type { RouteManifest, RouteManifestEntry } from '../src/types';
 import type { BaseFunctionConfig } from '@vercel/static-config';
 
 describe('getResolvedRouteConfig()', () => {
-  const staticConfigsMap = new Map<ConfigRoute, BaseFunctionConfig | null>([
+  const staticConfigsMap = new Map<
+    RouteManifestEntry,
+    BaseFunctionConfig | null
+  >([
     [{ id: 'root', file: 'root.tsx' }, null],
     [
       { id: 'routes/edge', file: 'routes/edge.tsx', parentId: 'root' },

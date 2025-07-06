@@ -1,5 +1,20 @@
 # @vercel/ruby
 
+## 2.2.0
+
+### Minor Changes
+
+- [build-utils] convert NodeVersion to class and add state getter ([#12883](https://github.com/vercel/vercel/pull/12883))
+  [ruby] convert RubyVersion to class and add state getter
+
+## 2.1.0
+
+### Minor Changes
+
+- Add support for Ruby 3.3 ([#11497](https://github.com/vercel/vercel/pull/11497))
+
+- Remove legacy `avoidTopLevelInstall` logic ([#11513](https://github.com/vercel/vercel/pull/11513))
+
 ## 2.0.5
 
 ### Patch Changes

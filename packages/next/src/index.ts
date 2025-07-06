@@ -1,4 +1,5 @@
 import {
+  Diagnostics,
   FileBlob,
   FileFsRef,
   Files,
@@ -25,6 +26,12 @@ import {
   NodejsLambda,
   BuildResultV2Typical as BuildResult,
   BuildResultBuildOutput,
+  getInstalledPackageVersion,
+  Span,
+  detectPackageManager,
+  BUILDER_INSTALLER_STEP,
+  BUILDER_COMPILE_STEP,
+  type TriggerEvent,
 } from '@vercel/build-utils';
 import { Route, RouteWithHandle, RouteWithSrc } from '@vercel/routing-utils';
 import {
@@ -51,7 +58,6 @@ import url from 'url';
 import createServerlessConfig from './create-serverless-config';
 import nextLegacyVersions from './legacy-versions';
 import { serverBuild } from './server-build';
-import { MIB } from './constants';
 import {
   collectTracedFiles,
   createLambdaFromPseudoLayers,
@@ -92,6 +98,7 @@ import {
   getFunctionsConfigManifest,
   require_,
   getServerlessPages,
+  RenderingMode,
 } from './utils';
 
 export const version = 2;
@@ -195,19 +202,19 @@ function isLegacyNext(nextVersion: string) {
   return true;
 }
 
-export const build: BuildV2 = async ({
-  files,
-  workPath,
-  repoRootPath,
-  entrypoint,
-  config = {},
-  meta = {},
-}) => {
-  validateEntrypoint(entrypoint);
+export const build: BuildV2 = async buildOptions => {
+  let { workPath, repoRootPath } = buildOptions;
+  const builderSpan = buildOptions.span ?? new Span({ name: 'vc.builder' });
 
-  // Limit for max size each lambda can be, 50 MB if no custom limit
-  const lambdaCompressedByteLimit = (config.maxLambdaSize ||
-    50 * MIB) as number;
+  const {
+    files,
+    entrypoint,
+    config = {},
+    meta = {},
+    buildCallback,
+  } = buildOptions;
+
+  validateEntrypoint(entrypoint);
 
   let entryDirectory = path.dirname(entrypoint);
   let entryPath = path.join(workPath, entryDirectory);
@@ -261,12 +268,21 @@ export const build: BuildV2 = async ({
   const nextVersionRange = await getNextVersionRange(entryPath);
   const nodeVersion = await getNodeVersion(entryPath, undefined, config, meta);
   const spawnOpts = getSpawnOptions(meta, nodeVersion);
-  const { cliType, lockfileVersion } = await scanParentDirs(entryPath);
+  const {
+    cliType,
+    lockfileVersion,
+    packageJsonPackageManager,
+    turboSupportsCorepackHome,
+  } = await scanParentDirs(entryPath, true);
+
   spawnOpts.env = getEnvForPackageManager({
     cliType,
     lockfileVersion,
+    packageJsonPackageManager,
     nodeVersion,
     env: spawnOpts.env || {},
+    turboSupportsCorepackHome,
+    projectCreatedAt: config.projectSettings?.createdAt,
   });
 
   const nowJsonPath = await findUp(['now.json', 'vercel.json'], {
@@ -328,19 +344,80 @@ export const build: BuildV2 = async ({
     await writeNpmRc(entryPath, process.env.NPM_AUTH_TOKEN);
   }
 
-  if (typeof installCommand === 'string') {
-    if (installCommand.trim()) {
-      console.log(`Running "install" command: \`${installCommand}\`...`);
+  const { detectedPackageManager } =
+    detectPackageManager(
+      cliType,
+      lockfileVersion,
+      config.projectSettings?.createdAt
+    ) ?? {};
 
-      await execCommand(installCommand, {
-        ...spawnOpts,
-        cwd: entryPath,
+  const trimmedInstallCommand = installCommand?.trim();
+
+  // If we don't have an install command defined then we fall back
+  // to zero config install, otherwise we run the user generated install command
+  const shouldRunInstallCommand =
+    // Case 1: We have a zero config install
+    typeof trimmedInstallCommand === 'undefined' ||
+    // Case 1: We have a install command which is non zero length
+    Boolean(trimmedInstallCommand);
+
+  builderSpan.setAttributes({
+    install: JSON.stringify(shouldRunInstallCommand),
+  });
+
+  if (shouldRunInstallCommand) {
+    await builderSpan
+      .child(BUILDER_INSTALLER_STEP, {
+        cliType,
+        lockfileVersion: lockfileVersion?.toString(),
+        packageJsonPackageManager,
+        detectedPackageManager,
+        installCommand: trimmedInstallCommand,
+      })
+      .trace(async () => {
+        if (typeof trimmedInstallCommand === 'string') {
+          console.log(
+            `Running "install" command: \`${trimmedInstallCommand}\`...`
+          );
+
+          await execCommand(trimmedInstallCommand, {
+            ...spawnOpts,
+            cwd: entryPath,
+          });
+        } else {
+          await runNpmInstall(
+            entryPath,
+            [],
+            spawnOpts,
+            meta,
+            nodeVersion,
+            config.projectSettings?.createdAt
+          );
+        }
       });
-    } else {
-      console.log(`Skipping "install" command...`);
-    }
   } else {
-    await runNpmInstall(entryPath, [], spawnOpts, meta, nodeVersion);
+    console.log(`Skipping "install" command...`);
+  }
+
+  if (spawnOpts.env.VERCEL_ANALYTICS_ID) {
+    debug('Found VERCEL_ANALYTICS_ID in environment');
+
+    const version = await getInstalledPackageVersion(
+      '@vercel/speed-insights',
+      entryPath
+    );
+
+    if (version) {
+      // Next.js has a built-in integration with Vercel Speed Insights
+      // with the new @vercel/speed-insights package this is no longer needed
+      // and can be removed to avoid duplicate events
+      delete spawnOpts.env.VERCEL_ANALYTICS_ID;
+      delete process.env.VERCEL_ANALYTICS_ID;
+
+      debug(
+        '@vercel/speed-insights is installed, removing VERCEL_ANALYTICS_ID from environment'
+      );
+    }
   }
 
   // Refetch Next version now that dependencies are installed.
@@ -351,7 +428,7 @@ export const build: BuildV2 = async ({
     throw new NowBuildError({
       code: 'NEXT_NO_VERSION',
       message:
-        'No Next.js version could be detected in your project. Make sure `"next"` is installed in "dependencies" or "devDependencies"',
+        'No Next.js version detected. Make sure your package.json has "next" in either "dependencies" or "devDependencies". Also check your Root Directory setting matches the directory of your package.json file.',
     });
   }
 
@@ -431,37 +508,64 @@ export const build: BuildV2 = async ({
     env.NODE_ENV = 'production';
   }
 
-  if (buildCommand) {
-    // Add `node_modules/.bin` to PATH
-    const nodeBinPaths = getNodeBinPaths({
-      start: entryPath,
-      base: repoRootPath,
-    });
-    const nodeBinPath = nodeBinPaths.join(path.delimiter);
-    env.PATH = `${nodeBinPath}${path.delimiter}${env.PATH}`;
+  const shouldRunCompileStep =
+    Boolean(buildCommand) || Boolean(buildScriptName);
 
-    // Yarn v2 PnP mode may be activated, so force "node-modules" linker style
-    if (!env.YARN_NODE_LINKER) {
-      env.YARN_NODE_LINKER = 'node-modules';
-    }
+  builderSpan.setAttributes({
+    build: JSON.stringify(shouldRunCompileStep),
+  });
 
-    debug(
-      `Added "${nodeBinPath}" to PATH env because a build command was used.`
-    );
+  if (shouldRunCompileStep) {
+    await builderSpan
+      .child(BUILDER_COMPILE_STEP, {
+        buildCommand,
+        buildScriptName,
+      })
+      .trace(async () => {
+        if (buildCommand) {
+          // Add `node_modules/.bin` to PATH
+          const nodeBinPaths = getNodeBinPaths({
+            start: entryPath,
+            base: repoRootPath,
+          });
+          const nodeBinPath = nodeBinPaths.join(path.delimiter);
+          env.PATH = `${nodeBinPath}${path.delimiter}${env.PATH}`;
 
-    console.log(`Running "${buildCommand}"`);
-    await execCommand(buildCommand, {
-      ...spawnOpts,
-      cwd: entryPath,
-      env,
-    });
-  } else if (buildScriptName) {
-    await runPackageJsonScript(entryPath, buildScriptName, {
-      ...spawnOpts,
-      env,
-    });
+          // Yarn v2 PnP mode may be activated, so force "node-modules" linker style
+          if (!env.YARN_NODE_LINKER) {
+            env.YARN_NODE_LINKER = 'node-modules';
+          }
+
+          debug(
+            `Added "${nodeBinPath}" to PATH env because a build command was used.`
+          );
+
+          console.log(`Running "${buildCommand}"`);
+          await execCommand(buildCommand, {
+            ...spawnOpts,
+            cwd: entryPath,
+            env,
+          });
+        } else if (buildScriptName) {
+          await runPackageJsonScript(
+            entryPath,
+            buildScriptName,
+            {
+              ...spawnOpts,
+              env,
+            },
+            config.projectSettings?.createdAt
+          );
+        }
+      });
+    debug('build command exited');
+  } else {
+    console.log(`Skipping "build" command...`);
   }
-  debug('build command exited');
+
+  if (buildCallback) {
+    await buildCallback(buildOptions);
+  }
 
   let buildOutputVersion: undefined | number;
 
@@ -749,6 +853,13 @@ export const build: BuildV2 = async ({
               'image-manifest.json "images.remotePatterns" must be an array. Contact support if this continues to happen',
           });
         }
+        if (images.localPatterns && !Array.isArray(images.localPatterns)) {
+          throw new NowBuildError({
+            code: 'NEXT_IMAGES_LOCALPATTERNS',
+            message:
+              'image-manifest.json "images.localPatterns" must be an array. Contact support if this continues to happen',
+          });
+        }
         if (
           images.minimumCacheTTL &&
           !Number.isInteger(images.minimumCacheTTL)
@@ -757,6 +868,13 @@ export const build: BuildV2 = async ({
             code: 'NEXT_IMAGES_MINIMUMCACHETTL',
             message:
               'image-manifest.json "images.minimumCacheTTL" must be an integer. Contact support if this continues to happen.',
+          });
+        }
+        if (images.qualities && !Array.isArray(images.qualities)) {
+          throw new NowBuildError({
+            code: 'NEXT_IMAGES_QUALITIES',
+            message:
+              'image-manifest.json "images.qualities" must be an array. Contact support if this continues to happen.',
           });
         }
         if (
@@ -965,7 +1083,8 @@ export const build: BuildV2 = async ({
       ['--production'],
       spawnOpts,
       meta,
-      nodeVersion
+      nodeVersion,
+      config.projectSettings?.createdAt
     );
   }
 
@@ -1166,8 +1285,8 @@ export const build: BuildV2 = async ({
       staticPages[path.posix.join(entryDirectory, '404')] && hasPages404
         ? path.posix.join(entryDirectory, '404')
         : staticPages[path.posix.join(entryDirectory, '_errors/404')]
-        ? path.posix.join(entryDirectory, '_errors/404')
-        : undefined;
+          ? path.posix.join(entryDirectory, '_errors/404')
+          : undefined;
 
     const { i18n } = routesManifest || {};
 
@@ -1287,7 +1406,7 @@ export const build: BuildV2 = async ({
 
                 // ensure root-most index data route doesn't end in index.json
                 if (dataRoute.page === '/') {
-                  route.src = route.src.replace(/\/index\.json/, '.json');
+                  route.src = route.src.replace(/\/index(\\)?\.json/, '.json');
                 }
 
                 // make sure to route to the correct prerender output
@@ -1325,16 +1444,26 @@ export const build: BuildV2 = async ({
      */
     const experimentalPPRRoutes = new Set<string>();
 
-    for (const [route, { experimentalPPR }] of [
+    for (const [route, { renderingMode }] of [
       ...Object.entries(prerenderManifest.staticRoutes),
       ...Object.entries(prerenderManifest.blockingFallbackRoutes),
       ...Object.entries(prerenderManifest.fallbackRoutes),
       ...Object.entries(prerenderManifest.omittedRoutes),
     ]) {
-      if (!experimentalPPR) continue;
+      if (renderingMode !== RenderingMode.PARTIALLY_STATIC) continue;
 
       experimentalPPRRoutes.add(route);
     }
+
+    const isAppPPREnabled = requiredServerFilesManifest
+      ? requiredServerFilesManifest.config.experimental?.ppr === true ||
+        requiredServerFilesManifest.config.experimental?.ppr === 'incremental'
+      : false;
+
+    const isAppClientSegmentCacheEnabled = requiredServerFilesManifest
+      ? requiredServerFilesManifest.config.experimental?.clientSegmentCache ===
+        true
+      : false;
 
     if (requiredServerFilesManifest) {
       if (!routesManifest) {
@@ -1385,13 +1514,14 @@ export const build: BuildV2 = async ({
         escapedBuildId,
         outputDirectory,
         trailingSlashRedirects,
-        lambdaCompressedByteLimit,
         requiredServerFilesManifest,
         privateOutputs,
         hasIsr404Page,
         hasIsr500Page,
         variantsManifest,
         experimentalPPRRoutes,
+        isAppPPREnabled,
+        isAppClientSegmentCacheEnabled,
       });
     }
 
@@ -1519,7 +1649,6 @@ export const build: BuildV2 = async ({
       );
 
       for (const page of mergedPageKeys) {
-        const tracedFiles: { [key: string]: FileFsRef } = {};
         const fileList = parentFilesMap.get(
           path.relative(baseDir, pages[page].fsPath)
         );
@@ -1531,16 +1660,16 @@ export const build: BuildV2 = async ({
         }
         const reasons = result.reasons;
 
-        await Promise.all(
-          Array.from(fileList).map(
-            collectTracedFiles(
-              baseDir,
-              lstatResults,
-              lstatSema,
-              reasons,
-              tracedFiles
+        const tracedFiles: {
+          [filePath: string]: FileFsRef;
+        } = Object.fromEntries(
+          (
+            await Promise.all(
+              Array.from(fileList).map(
+                collectTracedFiles(baseDir, lstatResults, lstatSema, reasons)
+              )
             )
-          )
+          ).filter((entry): entry is [string, FileFsRef] => !!entry)
         );
         pageTraces[page] = tracedFiles;
       }
@@ -1622,7 +1751,6 @@ export const build: BuildV2 = async ({
         tracedPseudoLayer: tracedPseudoLayer?.pseudoLayer || {},
         initialPseudoLayer: { pseudoLayer: {}, pseudoLayerBytes: 0 },
         initialPseudoLayerUncompressed: 0,
-        lambdaCompressedByteLimit,
         // internal pages are already referenced in traces for serverless
         // like builds
         internalPages: [],
@@ -1640,7 +1768,6 @@ export const build: BuildV2 = async ({
         tracedPseudoLayer: tracedPseudoLayer?.pseudoLayer || {},
         initialPseudoLayer: { pseudoLayer: {}, pseudoLayerBytes: 0 },
         initialPseudoLayerUncompressed: 0,
-        lambdaCompressedByteLimit,
         internalPages: [],
         experimentalPPRRoutes: undefined,
       });
@@ -1674,7 +1801,6 @@ export const build: BuildV2 = async ({
       ];
       await detectLambdaLimitExceeding(
         combinedInitialLambdaGroups,
-        lambdaCompressedByteLimit,
         compressedPages
       );
 
@@ -1835,7 +1961,12 @@ export const build: BuildV2 = async ({
               '___next_launcher.cjs'
             )]: new FileBlob({ data: launcher }),
           };
-          let lambdaOptions: { memory?: number; maxDuration?: number } = {};
+          let lambdaOptions: {
+            architecture?: NodejsLambda['architecture'];
+            memory?: number;
+            maxDuration?: number;
+            experimentalTriggers?: TriggerEvent[];
+          } = {};
 
           if (config && config.functions) {
             lambdaOptions = await getLambdaOptionsFromFunction({
@@ -1914,7 +2045,8 @@ export const build: BuildV2 = async ({
       canUsePreviewMode,
       bypassToken: prerenderManifest.bypassToken || '',
       isServerMode,
-      experimentalPPRRoutes,
+      isAppPPREnabled: false,
+      isAppClientSegmentCacheEnabled: false,
     }).then(arr =>
       localizeDynamicRoutes(
         arr,
@@ -1944,7 +2076,8 @@ export const build: BuildV2 = async ({
         canUsePreviewMode,
         bypassToken: prerenderManifest.bypassToken || '',
         isServerMode,
-        experimentalPPRRoutes,
+        isAppPPREnabled: false,
+        isAppClientSegmentCacheEnabled: false,
       }).then(arr =>
         arr.map(route => {
           route.src = route.src.replace('^', `^${dynamicPrefix}`);
@@ -2142,6 +2275,8 @@ export const build: BuildV2 = async ({
       appPathRoutesManifest,
       isSharedLambdas,
       canUsePreviewMode,
+      isAppPPREnabled: false,
+      isAppClientSegmentCacheEnabled: false,
     });
 
     await Promise.all(
@@ -2315,6 +2450,24 @@ export const build: BuildV2 = async ({
         ? [
             // Handle auto-adding current default locale to path based on
             // $wildcard
+            // This is split into two rules to avoid matching the `/index` route as it causes issues with trailing slash redirect
+            {
+              src: `^${path.posix.join(
+                '/',
+                entryDirectory,
+                '/'
+              )}(?!(?:_next/.*|${i18n.locales
+                .map(locale => escapeStringRegexp(locale))
+                .join('|')})(?:/.*|$))$`,
+              // we aren't able to ensure trailing slash mode here
+              // so ensure this comes after the trailing slash redirect
+              dest: `${
+                entryDirectory !== '.'
+                  ? path.posix.join('/', entryDirectory)
+                  : ''
+              }$wildcard${trailingSlash ? '/' : ''}`,
+              continue: true,
+            },
             {
               src: `^${path.join(
                 '/',
@@ -2444,22 +2597,22 @@ export const build: BuildV2 = async ({
       ...(!hasStatic500
         ? []
         : i18n
-        ? [
-            {
-              src: `${path.join('/', entryDirectory, '/')}(?:${i18n.locales
-                .map(locale => escapeStringRegexp(locale))
-                .join('|')})?[/]?500`,
-              status: 500,
-              continue: true,
-            },
-          ]
-        : [
-            {
-              src: path.join('/', entryDirectory, '500'),
-              status: 500,
-              continue: true,
-            },
-          ]),
+          ? [
+              {
+                src: `${path.join('/', entryDirectory, '/')}(?:${i18n.locales
+                  .map(locale => escapeStringRegexp(locale))
+                  .join('|')})?[/]?500`,
+                status: 500,
+                continue: true,
+              },
+            ]
+          : [
+              {
+                src: path.join('/', entryDirectory, '500'),
+                status: 500,
+                continue: true,
+              },
+            ]),
 
       // Next.js page lambdas, `static/` folder, reserved assets, and `public/`
       // folder
@@ -2667,34 +2820,69 @@ export const build: BuildV2 = async ({
             ...(!hasStatic500
               ? []
               : i18n
-              ? [
-                  {
-                    src: `${path.join(
-                      '/',
-                      entryDirectory,
-                      '/'
-                    )}(?<nextLocale>${i18n.locales
-                      .map(locale => escapeStringRegexp(locale))
-                      .join('|')})(/.*|$)`,
-                    dest: '/$nextLocale/500',
-                    status: 500,
-                  },
-                  {
-                    src: path.join('/', entryDirectory, '.*'),
-                    dest: `/${i18n.defaultLocale}/500`,
-                    status: 500,
-                  },
-                ]
-              : [
-                  {
-                    src: path.join('/', entryDirectory, '.*'),
-                    dest: path.join('/', entryDirectory, '/500'),
-                    status: 500,
-                  },
-                ]),
+                ? [
+                    {
+                      src: `${path.join(
+                        '/',
+                        entryDirectory,
+                        '/'
+                      )}(?<nextLocale>${i18n.locales
+                        .map(locale => escapeStringRegexp(locale))
+                        .join('|')})(/.*|$)`,
+                      dest: '/$nextLocale/500',
+                      status: 500,
+                    },
+                    {
+                      src: path.join('/', entryDirectory, '.*'),
+                      dest: `/${i18n.defaultLocale}/500`,
+                      status: 500,
+                    },
+                  ]
+                : [
+                    {
+                      src: path.join('/', entryDirectory, '.*'),
+                      dest: path.join('/', entryDirectory, '/500'),
+                      status: 500,
+                    },
+                  ]),
           ]),
     ],
     framework: { version: nextVersion },
+  };
+};
+
+export const diagnostics: Diagnostics = async ({
+  config,
+  entrypoint,
+  workPath,
+  repoRootPath,
+}) => {
+  const entryDirectory = path.dirname(entrypoint);
+  const entryPath = path.join(workPath, entryDirectory);
+  const outputDirectory = path.join('./', config.outputDirectory || '.next');
+  const basePath = repoRootPath || workPath;
+  const diagnosticsEntrypoint = path.relative(basePath, entryPath);
+
+  debug(
+    `Reading diagnostics file in diagnosticsEntrypoint=${diagnosticsEntrypoint}`
+  );
+
+  return {
+    // Collect output in `.next/diagnostics`
+    ...(await glob(
+      '*',
+      path.join(basePath, diagnosticsEntrypoint, outputDirectory, 'diagnostics')
+    )),
+    // Collect `.next/trace` file
+    ...(await glob(
+      'trace',
+      path.join(basePath, diagnosticsEntrypoint, outputDirectory)
+    )),
+    // Collect `.next/turbopack` file
+    ...(await glob(
+      'turbopack',
+      path.join(basePath, diagnosticsEntrypoint, outputDirectory)
+    )),
   };
 };
 
@@ -2719,7 +2907,7 @@ export const prepareCache: PrepareCache = async ({
 
   debug('Producing cache file manifest...');
 
-  // for monorepos we want to cache all node_modules
+  // for monorepos we want to cache all node_modules and .yarn/cache
   const isMonorepo = repoRootPath && repoRootPath !== workPath;
   const cacheBasePath = repoRootPath || workPath;
   const cacheEntrypoint = path.relative(cacheBasePath, entryPath);
@@ -2732,6 +2920,12 @@ export const prepareCache: PrepareCache = async ({
     )),
     ...(await glob(
       path.join(cacheEntrypoint, outputDirectory, 'cache/**'),
+      cacheBasePath
+    )),
+    ...(await glob(
+      isMonorepo
+        ? '**/.yarn/cache/**'
+        : path.join(cacheEntrypoint, '.yarn/cache/**'),
       cacheBasePath
     )),
   };

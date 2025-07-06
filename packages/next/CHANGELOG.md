@@ -1,5 +1,528 @@
 # @vercel/next
 
+## 4.9.5
+
+### Patch Changes
+
+- simplify experimental triggers ([#13527](https://github.com/vercel/vercel/pull/13527))
+
+## 4.9.4
+
+### Patch Changes
+
+- Update more handling for experimentalTriggers ([#13517](https://github.com/vercel/vercel/pull/13517))
+
+## 4.9.3
+
+### Patch Changes
+
+- Add CloudEventTrigger support for Lambda functions ([#13503](https://github.com/vercel/vercel/pull/13503))
+
+## 4.9.2
+
+### Patch Changes
+
+- Added support for the Resume Data Cache (RDC) for React Server Component (RSC) requests ([#13459](https://github.com/vercel/vercel/pull/13459))
+
+## 4.9.1
+
+### Patch Changes
+
+- Ensure we await node middleware import for top-level await ([#13479](https://github.com/vercel/vercel/pull/13479))
+
+## 4.9.0
+
+### Minor Changes
+
+- make the output of collectTracedFiles deterministic ([#13410](https://github.com/vercel/vercel/pull/13410))
+
+## 4.8.0
+
+### Minor Changes
+
+- Allow configuring functions `architecture` via the `vercel.json` configuration ([#13344](https://github.com/vercel/vercel/pull/13344))
+
+### Patch Changes
+
+- reinstate Vary header ([#13359](https://github.com/vercel/vercel/pull/13359))
+
+## 4.7.11
+
+### Patch Changes
+
+- Bump @vercel/nft to latest ([#13312](https://github.com/vercel/vercel/pull/13312))
+
+## 4.7.10
+
+### Patch Changes
+
+- Add .next/turbopack file into diagnostics output ([#13293](https://github.com/vercel/vercel/pull/13293))
+
+## 4.7.9
+
+### Patch Changes
+
+- Support blocking static shells by not loading a fallback when none is present. Also updated the allowQuery logic to support this case. ([#13272](https://github.com/vercel/vercel/pull/13272))
+
+- Fix segment prefetching for PPR-disabled static routes ([#13275](https://github.com/vercel/vercel/pull/13275))
+
+## 4.7.8
+
+### Patch Changes
+
+- Added support for more specific route keys for prefetch segments ([#13262](https://github.com/vercel/vercel/pull/13262))
+
+## 4.7.7
+
+### Patch Changes
+
+- Fix for rewrite headers that ensures that we don't check post-non rewrite operations (like adding headers). ([#13229](https://github.com/vercel/vercel/pull/13229))
+
+- [next] ensure app router 404 page is still included in functions when using pages i18n ([#13222](https://github.com/vercel/vercel/pull/13222))
+
+- [next] improve error message for "No Next.js version" ([#13239](https://github.com/vercel/vercel/pull/13239))
+
+## 4.7.6
+
+### Patch Changes
+
+- Support fallback blocking routes to provide a fallback root params configuration ([#13215](https://github.com/vercel/vercel/pull/13215))
+
+## 4.7.5
+
+### Patch Changes
+
+- Make prerender groups deterministic for client segment caches ([#13205](https://github.com/vercel/vercel/pull/13205))
+
+## 4.7.4
+
+### Patch Changes
+
+- bug: do not emit vary header in next.js >=13.4.6 ([#13011](https://github.com/vercel/vercel/pull/13011))
+
+## 4.7.3
+
+### Patch Changes
+
+- Add support for expire values in Next.js prerender manifest ([#13087](https://github.com/vercel/vercel/pull/13087))
+
+- Add pnpm 10 detection to next metrics ([#13121](https://github.com/vercel/vercel/pull/13121))
+
+## 4.7.2
+
+### Patch Changes
+
+- Ensure we lookup middleware function config properly ([#13107](https://github.com/vercel/vercel/pull/13107))
+
+## 4.7.1
+
+### Patch Changes
+
+- Add node middleware handling ([#13028](https://github.com/vercel/vercel/pull/13028))
+
+## 4.7.0
+
+### Minor Changes
+
+- Detect v9 pnpm lock files as pnpm 10 for new projects ([#13072](https://github.com/vercel/vercel/pull/13072))
+
+## 4.6.2
+
+### Patch Changes
+
+- Handle patterns in rewrite destinations correctly ([#13052](https://github.com/vercel/vercel/pull/13052))
+
+## 4.6.1
+
+### Patch Changes
+
+- Fix duplicate trace names generated from builders ([#13051](https://github.com/vercel/vercel/pull/13051))
+
+## 4.6.0
+
+### Minor Changes
+
+- Support process tracing ([#12894](https://github.com/vercel/vercel/pull/12894))
+
+### Patch Changes
+
+- Fixed bug where rewrites would be applied twice in some cases ([#13040](https://github.com/vercel/vercel/pull/13040))
+
+- pin fixtures and set up auto updates ([#12979](https://github.com/vercel/vercel/pull/12979))
+
+## 4.5.2
+
+### Patch Changes
+
+- Added new prefetch segments feature for Next.js ([#12897](https://github.com/vercel/vercel/pull/12897))
+
+## 4.5.1
+
+### Patch Changes
+
+- ensure non-locale prefixed route variants come after more specific ones ([#13003](https://github.com/vercel/vercel/pull/13003))
+
+## 4.5.0
+
+### Minor Changes
+
+- Add .yarn/cache to build cache ([#12961](https://github.com/vercel/vercel/pull/12961))
+
+## 4.4.5
+
+### Patch Changes
+
+- Add test case for locale false rewrite ([#12959](https://github.com/vercel/vercel/pull/12959))
+
+## 4.4.4
+
+### Patch Changes
+
+- flag behavior to defer defaultLocale rewrite ([#12941](https://github.com/vercel/vercel/pull/12941))
+
+## 4.4.3
+
+### Patch Changes
+
+- ensure defaultLocale rewrite doesn't conflict with user-defined redirects ([#12916](https://github.com/vercel/vercel/pull/12916))
+
+- Added headers for user-supplied rewrites ([#12847](https://github.com/vercel/vercel/pull/12847))
+
+## 4.4.2
+
+### Patch Changes
+
+- Upgrade @vercel/nft to 0.27.10 ([#12109](https://github.com/vercel/vercel/pull/12109))
+
+- Revert build utils refactor ([#12818](https://github.com/vercel/vercel/pull/12818))
+
+- Fix bug where when page doesn't postpone it still generates a correct fallback ([#12811](https://github.com/vercel/vercel/pull/12811))
+
+## 4.4.1
+
+### Patch Changes
+
+- Added root params support for pages powered by partial prerendering ([#12813](https://github.com/vercel/vercel/pull/12813))
+
+- Fix next data route replacing ([#12813](https://github.com/vercel/vercel/pull/12813))
+
+- Refactor build-util usage to reuse detected lockfile ([#12813](https://github.com/vercel/vercel/pull/12813))
+
+- add support for `images.qualities` ([#12813](https://github.com/vercel/vercel/pull/12813))
+
+## 4.4.0
+
+### Minor Changes
+
+- Provide `waitUntil` via `@next/request-context` ([#12286](https://github.com/vercel/vercel/pull/12286))
+
+## 4.3.21
+
+### Patch Changes
+
+- Revert "Fix edge cases with internal redirect sorting" ([#12615](https://github.com/vercel/vercel/pull/12615))
+
+## 4.3.20
+
+### Patch Changes
+
+- Fix edge cases with internal redirect sorting ([#12599](https://github.com/vercel/vercel/pull/12599))
+
+## 4.3.19
+
+### Patch Changes
+
+- Fix basePath root matching for error pages ([#12559](https://github.com/vercel/vercel/pull/12559))
+
+- Stabilize Chained Prerenders ([#12507](https://github.com/vercel/vercel/pull/12507))
+
+## 4.3.18
+
+### Patch Changes
+
+- Support allowHeader from Next.js for filtering request headers during revalidation ([#12420](https://github.com/vercel/vercel/pull/12420))
+
+## 4.3.17
+
+### Patch Changes
+
+- Fix caching issue with prerenders while Partial Prerendering is enabled ([#12325](https://github.com/vercel/vercel/pull/12325))
+
+- Revert disabling generation of route shells ([#12323](https://github.com/vercel/vercel/pull/12323))
+
+## 4.3.16
+
+### Patch Changes
+
+- Partial Prerendering Fallback Shells now respect the revalidate config and now do not produce route shells on-demand. ([#12268](https://github.com/vercel/vercel/pull/12268))
+
+- Ensure app-paths-manifest is filtered properly ([#12284](https://github.com/vercel/vercel/pull/12284))
+
+## 4.3.15
+
+### Patch Changes
+
+- Fix corepack `packageManager` detection on monorepos ([#12258](https://github.com/vercel/vercel/pull/12258))
+
+## 4.3.14
+
+### Patch Changes
+
+- Revert "[build-utils] Fix corepack `packageManager` detection on monorepos" ([#12242](https://github.com/vercel/vercel/pull/12242))
+
+## 4.3.13
+
+### Patch Changes
+
+- Disable corepack when Turborepo does not support `COREPACK_HOME` ([#12211](https://github.com/vercel/vercel/pull/12211))
+
+- Fix corepack `packageManager` detection on monorepos ([#12219](https://github.com/vercel/vercel/pull/12219))
+
+## 4.3.12
+
+### Patch Changes
+
+- add support for `images.localPatterns` ([#12195](https://github.com/vercel/vercel/pull/12195))
+
+## 4.3.11
+
+### Patch Changes
+
+- Introduce new chain configuration for Partial Prerendering ([#12117](https://github.com/vercel/vercel/pull/12117))
+
+- fix defaultLocale redirect when using domains pattern ([#12166](https://github.com/vercel/vercel/pull/12166))
+
+## 4.3.10
+
+### Patch Changes
+
+- Revert "Revert "Revert "Fix corepack `packageManager` detection on monorepos""" ([#12099](https://github.com/vercel/vercel/pull/12099))
+
+## 4.3.9
+
+### Patch Changes
+
+- Revert "Revert "Fix corepack `packageManager` detection on monorepos"" ([#11871](https://github.com/vercel/vercel/pull/11871))
+
+## 4.3.8
+
+### Patch Changes
+
+- Combine Partial Prerendering lambdas for revalidation and dynamic resumes. ([#12064](https://github.com/vercel/vercel/pull/12064))
+
+- Added support for Partial Fallback Prerendering ([#12036](https://github.com/vercel/vercel/pull/12036))
+
+## 4.3.7
+
+### Patch Changes
+
+- remove experimental .action output handling ([#11998](https://github.com/vercel/vercel/pull/11998))
+
+## 4.3.6
+
+### Patch Changes
+
+- Revert "Fix corepack `packageManager` detection on monorepos" ([#11865](https://github.com/vercel/vercel/pull/11865))
+
+## 4.3.5
+
+### Patch Changes
+
+- Make app route prerender filter dynamic route specific ([#11863](https://github.com/vercel/vercel/pull/11863))
+
+## 4.3.4
+
+### Patch Changes
+
+- Fix missing app route with mixed SSR/SSG dynamic route ([#11862](https://github.com/vercel/vercel/pull/11862))
+
+- Fix corepack `packageManager` detection on monorepos ([#11811](https://github.com/vercel/vercel/pull/11811))
+
+## 4.3.3
+
+### Patch Changes
+
+- fix glob path for next.js diagnostics ([#11859](https://github.com/vercel/vercel/pull/11859))
+
+- Upgrade to @vercel/nft 0.27.3 with a bug fix for browser mapping support ([#11841](https://github.com/vercel/vercel/pull/11841))
+
+## 4.3.2
+
+### Patch Changes
+
+- Ensure we do not include ending slash in matched path ([#11830](https://github.com/vercel/vercel/pull/11830))
+
+## 4.3.1
+
+### Patch Changes
+
+- Bump fs-extra ([#11809](https://github.com/vercel/vercel/pull/11809))
+
+- don't skip creation of `.rsc` outputs for route handlers ([#11808](https://github.com/vercel/vercel/pull/11808))
+
+- Fix re-tracing app router entries ([#11812](https://github.com/vercel/vercel/pull/11812))
+
+- Add build callback handling ([#11807](https://github.com/vercel/vercel/pull/11807))
+
+- Log when tracing in builder instead of next build ([#11810](https://github.com/vercel/vercel/pull/11810))
+
+- Fix route handlers operation type ([#11800](https://github.com/vercel/vercel/pull/11800))
+
+## 4.3.0
+
+### Minor Changes
+
+- Adds the ability for builders to define a `diagnostics` step that is called after the build operation is done. ([#11653](https://github.com/vercel/vercel/pull/11653))
+  Implements the diagnostics step in the `next` builder.
+
+## 4.2.18
+
+### Patch Changes
+
+- Allow app router prerender functions to use streaming ([#11745](https://github.com/vercel/vercel/pull/11745))
+
+- Add experimental preload flag ([#11753](https://github.com/vercel/vercel/pull/11753))
+
+## 4.2.17
+
+### Patch Changes
+
+- Ensure all prerenders have matching .action output ([#11719](https://github.com/vercel/vercel/pull/11719))
+
+## 4.2.16
+
+### Patch Changes
+
+- prevent /index from being incorrectly normalized in rewrites ([#11707](https://github.com/vercel/vercel/pull/11707))
+
+- Upgrade to @vercel/nft 0.27.2 with browser remapping support ([#11700](https://github.com/vercel/vercel/pull/11700))
+
+- ensure unmatched rsc rewrites are routed to correct handler ([#11688](https://github.com/vercel/vercel/pull/11688))
+
+## 4.2.15
+
+### Patch Changes
+
+- ensure unmatched action rewrites are routed to correct handler ([#11686](https://github.com/vercel/vercel/pull/11686))
+
+- Adds a route for the `.rsc` pathname as well when app has ppr enabled but not all routes. ([#11681](https://github.com/vercel/vercel/pull/11681))
+
+## 4.2.14
+
+### Patch Changes
+
+- Don't create streaming lambdas for pages router routes ([#11660](https://github.com/vercel/vercel/pull/11660))
+
+- Ensure user rewrites still match to action outputs ([#11628](https://github.com/vercel/vercel/pull/11628))
+
+## 4.2.13
+
+### Patch Changes
+
+- Fix static case for detecting when a page supports PPR ([#11635](https://github.com/vercel/vercel/pull/11635))
+
+- Fix related to erroring when a prefetch route is not provided but the route is PPR enabled ([#11638](https://github.com/vercel/vercel/pull/11638))
+
+## 4.2.12
+
+### Patch Changes
+
+- Support incremental PPR for large applications ([#11625](https://github.com/vercel/vercel/pull/11625))
+
+## 4.2.11
+
+### Patch Changes
+
+- normalize source file locations for special metadata files ([#11579](https://github.com/vercel/vercel/pull/11579))
+
+## 4.2.10
+
+### Patch Changes
+
+- skip action rewrites for RSC requests ([#11576](https://github.com/vercel/vercel/pull/11576))
+
+- Bump `@vercel/nft@0.27.0` ([#11580](https://github.com/vercel/vercel/pull/11580))
+
+## 4.2.9
+
+### Patch Changes
+
+- Support incremental partial prerendering ([#11560](https://github.com/vercel/vercel/pull/11560))
+
+- ensure `.action` outputs are created for edge functions ([#11568](https://github.com/vercel/vercel/pull/11568))
+
+- ([#11566](https://github.com/vercel/vercel/pull/11566))
+
+## 4.2.8
+
+### Patch Changes
+
+- Fix missing initial RSC headers ([#11552](https://github.com/vercel/vercel/pull/11552))
+
+- Remove .prefetch.rsc rewrites for non-PPR ([#11540](https://github.com/vercel/vercel/pull/11540))
+
+- [next] rename middleware manifest env ([#11549](https://github.com/vercel/vercel/pull/11549))
+
+## 4.2.7
+
+### Patch Changes
+
+- Fix missing .rsc outputs for pages prerenders ([#11503](https://github.com/vercel/vercel/pull/11503))
+
+- Fix base path app index RSC handling ([#11528](https://github.com/vercel/vercel/pull/11528))
+
+- Fix interception routes PPR route handling ([#11527](https://github.com/vercel/vercel/pull/11527))
+
+## 4.2.6
+
+### Patch Changes
+
+- [next] Update test fixture version ([#11514](https://github.com/vercel/vercel/pull/11514))
+
+## 4.2.5
+
+### Patch Changes
+
+- Only rewrite next-action requests to `.action` handlers ([#11504](https://github.com/vercel/vercel/pull/11504))
+
+## 4.2.4
+
+### Patch Changes
+
+- [next]: Revert .action handling for dynamic routes ([#11509](https://github.com/vercel/vercel/pull/11509))
+
+## 4.2.3
+
+### Patch Changes
+
+- [next] Reland add .action handling for dynamic routes ([#11487](https://github.com/vercel/vercel/pull/11487))
+
+## 4.2.2
+
+### Patch Changes
+
+- [next] revert .action rewrites ([#11470](https://github.com/vercel/vercel/pull/11470))
+
+- Next.js builds: support sectioned source maps ([#11453](https://github.com/vercel/vercel/pull/11453))
+
+## 4.2.1
+
+### Patch Changes
+
+- [next] add streaming prerender group for actions ([#11454](https://github.com/vercel/vercel/pull/11454))
+
+- [next] Ensure \_not-found is included properly in app router functions ([#11441](https://github.com/vercel/vercel/pull/11441))
+
+- [next] add .action handling for dynamic routes ([#11461](https://github.com/vercel/vercel/pull/11461))
+
+- [next] Remove un-necessary compressed function size calc/constraint ([#11442](https://github.com/vercel/vercel/pull/11442))
+
+## 4.2.0
+
+### Minor Changes
+
+- Add support for edge function environment variables ([#11390](https://github.com/vercel/vercel/pull/11390))
+
 ## 4.1.6
 
 ### Patch Changes

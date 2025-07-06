@@ -1,3 +1,4 @@
+import assert from 'assert';
 import { describe, expect, it, test } from 'vitest';
 import {
   parseListen,
@@ -42,6 +43,7 @@ describe('parseListen', () => {
 
   it('should parse "unix:/home/user/server.sock" as UNIX socket file', () => {
     if (IS_WINDOWS) {
+      // eslint-disable-next-line no-console
       console.log('Skipping this test on Windows.');
       return;
     }
@@ -53,6 +55,7 @@ describe('parseListen', () => {
 
   it('should parse "pipe:\\\\.\\pipe\\PipeName" as UNIX pipe', () => {
     if (IS_WINDOWS) {
+      // eslint-disable-next-line no-console
       console.log('Skipping this test on Windows.');
       return;
     }
@@ -68,6 +71,7 @@ describe('parseListen', () => {
       parseListen('bad://url');
       throw new Error('Should not happen');
     } catch (_err) {
+      assert(_err instanceof Error);
       err = _err;
     }
     expect(err.message).toEqual('Unknown `--listen` scheme (protocol): bad:');

@@ -1,9 +1,11 @@
 import type FileRef from './file-ref';
 import type FileFsRef from './file-fs-ref';
 import type FileBlob from './file-blob';
-import type { Lambda } from './lambda';
+import type { Lambda, LambdaArchitecture } from './lambda';
 import type { Prerender } from './prerender';
 import type { EdgeFunction } from './edge-function';
+import type { Span } from './trace';
+import type { HasField } from '@vercel/routing-utils';
 
 export interface Env {
   [name: string]: string | undefined;
@@ -45,17 +47,7 @@ export interface Config {
   [key: string]: unknown;
 }
 
-export type HasField = Array<
-  | {
-      type: 'host';
-      value: string;
-    }
-  | {
-      type: 'header' | 'cookie' | 'query';
-      key: string;
-      value?: string;
-    }
->;
+export type { HasField };
 
 export interface Meta {
   isDev?: boolean;
@@ -66,7 +58,6 @@ export interface Meta {
   filesRemoved?: string[];
   env?: Env;
   buildEnv?: Env;
-  avoidTopLevelInstall?: boolean;
   [key: string]: unknown;
 }
 
@@ -109,6 +100,18 @@ export interface BuildOptions {
    * on the build environment.
    */
   meta?: Meta;
+
+  /**
+   * A callback to be invoked by a builder after a project's
+   * build command has been run but before the outputs have been
+   * fully processed
+   */
+  buildCallback?: (opts: Omit<BuildOptions, 'buildCallback'>) => Promise<void>;
+
+  /**
+   * The current trace state from the internal vc tracing
+   */
+  span?: Span;
 }
 
 export interface PrepareCacheOptions {
@@ -266,6 +269,7 @@ export namespace PackageJson {
   export interface Engines {
     node?: string;
     npm?: string;
+    pnpm?: string;
   }
 
   export interface PublishConfig {
@@ -315,18 +319,54 @@ export interface PackageJson {
   readonly private?: boolean;
   readonly publishConfig?: PackageJson.PublishConfig;
   readonly packageManager?: string;
+  readonly type?: string;
 }
 
-export interface NodeVersion {
+export interface ConstructorVersion {
   /** major version number: 18 */
   major: number;
+  /** minor version number: 18 */
+  minor?: number;
   /** major version range: "18.x" */
   range: string;
   /** runtime descriptor: "nodejs18.x" */
   runtime: string;
-  /** date beyond which this version is discontinued: 2023-08-17T19:05:45.951Z */
   discontinueDate?: Date;
 }
+
+interface BaseVersion extends ConstructorVersion {
+  state: 'active' | 'deprecated' | 'discontinued';
+}
+
+export class Version implements BaseVersion {
+  major: number;
+  minor?: number;
+  range: string;
+  runtime: string;
+  discontinueDate?: Date;
+  constructor(version: ConstructorVersion) {
+    this.major = version.major;
+    this.minor = version.minor;
+    this.range = version.range;
+    this.runtime = version.runtime;
+    this.discontinueDate = version.discontinueDate;
+  }
+  get state() {
+    if (this.discontinueDate && this.discontinueDate.getTime() <= Date.now()) {
+      return 'discontinued';
+    } else if (this.discontinueDate) {
+      return 'deprecated';
+    }
+    return 'active';
+  }
+  get formattedDate() {
+    return (
+      this.discontinueDate && this.discontinueDate.toISOString().split('T')[0]
+    );
+  }
+}
+
+export class NodeVersion extends Version {}
 
 export interface Builder {
   use: string;
@@ -336,11 +376,13 @@ export interface Builder {
 
 export interface BuilderFunctions {
   [key: string]: {
+    architecture?: LambdaArchitecture;
     memory?: number;
     maxDuration?: number;
     runtime?: string;
     includeFiles?: string;
     excludeFiles?: string;
+    experimentalTriggers?: TriggerEvent[];
   };
 }
 
@@ -363,6 +405,7 @@ export interface ProjectSettings {
 export interface BuilderV2 {
   version: 2;
   build: BuildV2;
+  diagnostics?: Diagnostics;
   prepareCache?: PrepareCache;
   shouldServe?: ShouldServe;
 }
@@ -370,6 +413,7 @@ export interface BuilderV2 {
 export interface BuilderV3 {
   version: 3;
   build: BuildV3;
+  diagnostics?: Diagnostics;
   prepareCache?: PrepareCache;
   shouldServe?: ShouldServe;
   startDevServer?: StartDevServer;
@@ -404,11 +448,34 @@ export type RemotePattern = {
    * Double `**` matches any number of path segments.
    */
   pathname?: string;
+
+  /**
+   * Can be literal query string such as `?v=1` or
+   * empty string meaning no query string.
+   */
+  search?: string;
 };
+
+export interface LocalPattern {
+  /**
+   * Can be literal or wildcard.
+   * Single `*` matches a single path segment.
+   * Double `**` matches any number of path segments.
+   */
+  pathname?: string;
+
+  /**
+   * Can be literal query string such as `?v=1` or
+   * empty string meaning no query string.
+   */
+  search?: string;
+}
 
 export interface Images {
   domains: string[];
   remotePatterns?: RemotePattern[];
+  localPatterns?: LocalPattern[];
+  qualities?: number[];
   sizes: number[];
   minimumCacheTTL?: number;
   formats?: ImageFormat[];
@@ -478,6 +545,7 @@ export interface BuildResultV3 {
 export type BuildV2 = (options: BuildOptions) => Promise<BuildResultV2>;
 export type BuildV3 = (options: BuildOptions) => Promise<BuildResultV3>;
 export type PrepareCache = (options: PrepareCacheOptions) => Promise<Files>;
+export type Diagnostics = (options: BuildOptions) => Promise<Files>;
 export type ShouldServe = (
   options: ShouldServeOptions
 ) => boolean | Promise<boolean>;
@@ -511,3 +579,50 @@ export interface FlagDefinition {
 }
 
 export type FlagDefinitions = Record<string, FlagDefinition>;
+
+export interface Chain {
+  /**
+   * The build output to use that references the lambda that will be used to
+   * append to the response.
+   */
+  outputPath: string;
+
+  /**
+   * The headers to send when making the request to append to the response.
+   */
+  headers: Record<string, string>;
+}
+
+/**
+ * Queue trigger event for Vercel's queue system.
+ * Handles "queue/v1beta" events with queue-specific configuration.
+ */
+export interface TriggerEvent {
+  /** Event type - must be "queue/v1beta" (REQUIRED) */
+  type: 'queue/v1beta';
+
+  /** Name of the queue topic to consume from (REQUIRED) */
+  topic: string;
+
+  /** Name of the consumer group for this trigger (REQUIRED) */
+  consumer: string;
+
+  /**
+   * Maximum number of retry attempts for failed executions (OPTIONAL)
+   * Behavior when not specified depends on the server's default configuration.
+   */
+  maxAttempts?: number;
+
+  /**
+   * Delay in seconds before retrying failed executions (OPTIONAL)
+   * Behavior when not specified depends on the server's default configuration.
+   */
+  retryAfterSeconds?: number;
+
+  /**
+   * Initial delay in seconds before first execution attempt (OPTIONAL)
+   * Must be 0 or greater. Use 0 for no initial delay.
+   * Behavior when not specified depends on the server's default configuration.
+   */
+  initialDelaySeconds?: number;
+}

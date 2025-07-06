@@ -1,5 +1,6 @@
+import assert from 'assert';
 import { isIP } from 'net';
-const { exec, fixture, testFixture, testFixtureStdio } = require('./utils.js');
+import { exec, fixture, testFixture, testFixtureStdio } from './utils';
 
 test('[vercel dev] validate redirects', async () => {
   const directory = fixture('invalid-redirects');
@@ -34,12 +35,13 @@ test('[vercel dev] validate mixed routes and rewrites', async () => {
 
 test('[vercel dev] validate env var names', async () => {
   const directory = fixture('invalid-env-var-name');
-  const { dev } = await testFixture(directory, { encoding: 'utf8' });
+  const { dev } = await testFixture(directory);
 
   try {
     let stderr = '';
 
     await new Promise<void>((resolve, reject) => {
+      assert(dev.stderr);
       dev.stderr.on('data', (b: string) => {
         stderr += b;
         if (
@@ -126,14 +128,6 @@ test(
 );
 
 test(
-  '[vercel dev] Use custom runtime from the "functions" property',
-  testFixtureStdio('custom-runtime', async (testPath: any) => {
-    await testPath(200, `/api/user`, /Hello, from Bash!/m);
-    await testPath(200, `/api/user.sh`, /Hello, from Bash!/m);
-  })
-);
-
-test(
   '[vercel dev] Should work with nested `tsconfig.json` files',
   testFixtureStdio('nested-tsconfig', async (testPath: any) => {
     await testPath(200, `/`, /Nested tsconfig.json test page/);
@@ -176,6 +170,15 @@ test(
     await testPath(200, '/api/another.go', 'This is another page');
     await testPath(200, `/api/foo`, 'Req Path: /api/foo');
     await testPath(200, `/api/bar`, 'Req Path: /api/bar');
+  })
+);
+
+test(
+  '[vercel dev] Should support `*.go` API serverless functions with external modules',
+  testFixtureStdio('go-external-module', async (testPath: any) => {
+    await testPath(200, `/api`, 'hello from go!');
+    await testPath(200, `/api/index`, 'hello from go!');
+    await testPath(200, `/api/index.go`, 'hello from go!');
   })
 );
 
