@@ -635,6 +635,15 @@ describe('rewrite headers', () => {
     expect(route[0].headers).toBeUndefined();
   });
 
+  it('should strip the hash from the rewritten path', () => {
+    const route = routes.filter(r => r.src?.includes('suffix'));
+    expect(route.length).toBe(2);
+    expect(route[0].headers).toEqual({
+      'x-nextjs-rewritten-path': '/$1',
+      'x-nextjs-rewritten-query': 'suffix=$1',
+    });
+  });
+
   it('should not add rewrite headers when it is excluded with missing', () => {
     const route = routes.filter(r => r.src?.includes('missing'));
     expect(route.length).toBe(1);
@@ -662,5 +671,85 @@ describe('rewrite headers', () => {
     ]);
 
     expect(route[1].headers).toBeUndefined();
+  });
+});
+
+describe('rewrite headers with rewrite', () => {
+  let routes;
+  beforeAll(async () => {
+    const output = await runBuildLambda(
+      path.join(__dirname, 'rewrite-headers-with-rewrite')
+    );
+    routes = output.buildResult.routes;
+  });
+
+  it('should add rewrite headers before the original rewrite', () => {
+    let route = routes.filter(
+      r => r.src === '^(?:/(en|fi|sv|fr|nb))(?:/)?(?<rscsuff>\\.rsc)?$'
+    );
+    expect(route.length).toBe(2);
+
+    // Header without the actual rewrite.
+    expect(route[0].headers).toEqual({
+      'x-nextjs-rewritten-path': '/$1/landing',
+      'x-nextjs-rewritten-query': undefined,
+    });
+    expect(route[0].continue).toBe(true);
+    expect(route[0].check).toBeUndefined();
+
+    // Actual rewrite.
+    expect(route[1].headers).toBeUndefined();
+    expect(route[1].continue).toBeUndefined();
+    expect(route[1].check).toBe(true);
+  });
+});
+
+describe('cache-control', () => {
+  /**
+   * @type {import('@vercel/build-utils').BuildResultV2Typical}
+   */
+  let buildResult;
+
+  beforeAll(async () => {
+    const result = await runBuildLambda(path.join(__dirname, 'use-cache'));
+    buildResult = result.buildResult;
+  });
+
+  it('should add expiration and staleExpiration values for ISR routes with "use cache"', async () => {
+    const { output } = buildResult;
+    const outputEntry = output['index'];
+
+    if (outputEntry.type !== 'Prerender') {
+      throw new Error('Unexpected output type ' + outputEntry.type);
+    }
+
+    // cache life profile "weeks"
+    expect(outputEntry.expiration).toBe(604800); // 1 week
+    expect(outputEntry.staleExpiration).toBe(2592000); // 30 days
+  });
+
+  it('should add expiration and staleExpiration values for PPR fallback routes with "use cache"', async () => {
+    const { output } = buildResult;
+    const outputEntry = output['[slug]'];
+
+    if (outputEntry.type !== 'Prerender') {
+      throw new Error('Unexpected output type ' + outputEntry.type);
+    }
+
+    // cache life profile "weeks"
+    expect(outputEntry.expiration).toBe(604800); // 1 week
+    expect(outputEntry.staleExpiration).toBe(2592000); // 30 days
+  });
+
+  it('should not add a staleExpiration value for static routes', async () => {
+    const { output } = buildResult;
+    const outputEntry = output['static'];
+
+    if (outputEntry.type !== 'Prerender') {
+      throw new Error('Unexpected output type ' + outputEntry.type);
+    }
+
+    expect(outputEntry.expiration).toBe(false);
+    expect(outputEntry.staleExpiration).toBeUndefined();
   });
 });

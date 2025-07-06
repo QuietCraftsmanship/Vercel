@@ -1,5 +1,121 @@
 # @vercel/fs-detectors
 
+## 5.4.6
+
+### Patch Changes
+
+- Updated dependencies [[`53cbed6a060885094384b27108ac162193326aae`](https://github.com/vercel/vercel/commit/53cbed6a060885094384b27108ac162193326aae)]:
+  - @vercel/routing-utils@5.1.0
+
+## 5.4.5
+
+### Patch Changes
+
+- Updated dependencies [[`8f791807ae04479e538c11ccd709b39ed210e477`](https://github.com/vercel/vercel/commit/8f791807ae04479e538c11ccd709b39ed210e477), [`419e2344e6d0883ddbec6cdd3adf2c2935a4951c`](https://github.com/vercel/vercel/commit/419e2344e6d0883ddbec6cdd3adf2c2935a4951c)]:
+  - @vercel/routing-utils@5.0.8
+  - @vercel/frameworks@3.7.0
+
+## 5.4.4
+
+### Patch Changes
+
+- Updated dependencies [[`b5fed7cca786d93b7c88af275ce1dca5e5b59098`](https://github.com/vercel/vercel/commit/b5fed7cca786d93b7c88af275ce1dca5e5b59098)]:
+  - @vercel/routing-utils@5.0.7
+
+## 5.4.3
+
+### Patch Changes
+
+- Updated dependencies [[`826539f0236c5532c473e2490da6ea797d363423`](https://github.com/vercel/vercel/commit/826539f0236c5532c473e2490da6ea797d363423)]:
+  - @vercel/routing-utils@5.0.6
+
+## 5.4.2
+
+### Patch Changes
+
+- Detect turbo.jsonc for Turborepo ([#13388](https://github.com/vercel/vercel/pull/13388))
+
+- Updated dependencies [[`9e783f33df5181f93ff259b5f3c19e8cacf68afc`](https://github.com/vercel/vercel/commit/9e783f33df5181f93ff259b5f3c19e8cacf68afc)]:
+  - @vercel/routing-utils@5.0.5
+
+## 5.4.1
+
+### Patch Changes
+
+- Updated dependencies [[`7883bb696c7160a064b1bc58765cd30dac4bd969`](https://github.com/vercel/vercel/commit/7883bb696c7160a064b1bc58765cd30dac4bd969)]:
+  - @vercel/frameworks@3.6.4
+
+## 5.4.0
+
+### Minor Changes
+
+- Adds instrumentation detection to the `build` command ([#13271](https://github.com/vercel/vercel/pull/13271))
+
+## 5.3.11
+
+### Patch Changes
+
+- Updated dependencies [[`0c75d7240e2704d9ebd11173d56bf0a304207d3b`](https://github.com/vercel/vercel/commit/0c75d7240e2704d9ebd11173d56bf0a304207d3b)]:
+  - @vercel/frameworks@3.6.3
+
+## 5.3.10
+
+### Patch Changes
+
+- [build-utils] increase max memory limit ([#13162](https://github.com/vercel/vercel/pull/13162))
+
+## 5.3.9
+
+### Patch Changes
+
+- Updated dependencies [[`bc62570efe8b240a49cbcdef394337743013731a`](https://github.com/vercel/vercel/commit/bc62570efe8b240a49cbcdef394337743013731a), [`b1f0674bfed4311fd2531571b0644747f726ea94`](https://github.com/vercel/vercel/commit/b1f0674bfed4311fd2531571b0644747f726ea94)]:
+  - @vercel/frameworks@3.6.2
+
+## 5.3.8
+
+### Patch Changes
+
+- Updated dependencies [[`c2ffb3f987cdc6766cc4c1609fff2b0da724b70c`](https://github.com/vercel/vercel/commit/c2ffb3f987cdc6766cc4c1609fff2b0da724b70c)]:
+  - @vercel/routing-utils@5.0.4
+
+## 5.3.7
+
+### Patch Changes
+
+- Updated dependencies [[`ed69811b310bc46347b225f516ff2f7e0817933c`](https://github.com/vercel/vercel/commit/ed69811b310bc46347b225f516ff2f7e0817933c), [`150990344d7195c72bb336614153c77d8cefb78c`](https://github.com/vercel/vercel/commit/150990344d7195c72bb336614153c77d8cefb78c)]:
+  - @vercel/frameworks@3.6.1
+  - @vercel/routing-utils@5.0.3
+
+## 5.3.6
+
+### Patch Changes
+
+- Updated dependencies [[`f9d8407866ac95db70dfd961cc51a6d2df233efa`](https://github.com/vercel/vercel/commit/f9d8407866ac95db70dfd961cc51a6d2df233efa)]:
+  - @vercel/frameworks@3.6.0
+
+## 5.3.5
+
+### Patch Changes
+
+- Updated dependencies [[`3d310f508b9ff8f891838d8ba8ea24e428a06a9d`](https://github.com/vercel/vercel/commit/3d310f508b9ff8f891838d8ba8ea24e428a06a9d)]:
+  - @vercel/routing-utils@5.0.2
+
+## 5.3.4
+
+### Patch Changes
+
+- Updated dependencies [[`16b38a92574695f9961c7cc00cf631fe434c26c8`](https://github.com/vercel/vercel/commit/16b38a92574695f9961c7cc00cf631fe434c26c8)]:
+  - @vercel/routing-utils@5.0.1
+
+## 5.3.3
+
+### Patch Changes
+
+- Fix local file system readdir to not throw on special file system stat types ([#12915](https://github.com/vercel/vercel/pull/12915))
+
+- Updated dependencies [[`d645bdd4312730b10bef89ad9e18e111500849fc`](https://github.com/vercel/vercel/commit/d645bdd4312730b10bef89ad9e18e111500849fc)]:
+  - @vercel/frameworks@3.5.0
+
 ## 5.3.2
 
 ### Patch Changes

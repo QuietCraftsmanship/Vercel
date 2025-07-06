@@ -1,5 +1,19 @@
 # @vercel/python
 
+## 4.7.2
+
+### Patch Changes
+
+- Fix bug in WSGI streaming ([#13213](https://github.com/vercel/vercel/pull/13213))
+
+## 4.7.1
+
+### Patch Changes
+
+- Remove support for VERCEL_IPC_FD ([#12908](https://github.com/vercel/vercel/pull/12908))
+
+- Add `supportsResponseStreaming` to build output ([#12884](https://github.com/vercel/vercel/pull/12884))
+
 ## 4.7.0
 
 ### Minor Changes

@@ -1,5 +1,183 @@
 # @vercel/static-build
 
+## 2.7.13
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @vercel/gatsby-plugin-vercel-builder@2.0.87
+
+## 2.7.12
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @vercel/gatsby-plugin-vercel-builder@2.0.86
+
+## 2.7.11
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @vercel/gatsby-plugin-vercel-builder@2.0.85
+
+## 2.7.10
+
+### Patch Changes
+
+- Updated dependencies [[`826539f0236c5532c473e2490da6ea797d363423`](https://github.com/vercel/vercel/commit/826539f0236c5532c473e2490da6ea797d363423)]:
+  - @vercel/gatsby-plugin-vercel-builder@2.0.84
+
+## 2.7.9
+
+### Patch Changes
+
+- Updated dependencies [[`6c8e763ab63c79e12c7d5455fd79cf158f43cc77`](https://github.com/vercel/vercel/commit/6c8e763ab63c79e12c7d5455fd79cf158f43cc77), [`953b06e9a94089c6e124a36c6e4040e90aab03b1`](https://github.com/vercel/vercel/commit/953b06e9a94089c6e124a36c6e4040e90aab03b1)]:
+  - @vercel/static-config@3.1.1
+  - @vercel/gatsby-plugin-vercel-builder@2.0.83
+
+## 2.7.8
+
+### Patch Changes
+
+- Updated dependencies [[`0d86d9c3fa61ae91f0ed4ffe4c0c97655411468f`](https://github.com/vercel/vercel/commit/0d86d9c3fa61ae91f0ed4ffe4c0c97655411468f)]:
+  - @vercel/static-config@3.1.0
+  - @vercel/gatsby-plugin-vercel-builder@2.0.82
+
+## 2.7.7
+
+### Patch Changes
+
+- Updated dependencies [[`1569176380cf3953051254d535a9f295ae328372`](https://github.com/vercel/vercel/commit/1569176380cf3953051254d535a9f295ae328372)]:
+  - @vercel/gatsby-plugin-vercel-builder@2.0.81
+
+## 2.7.6
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @vercel/gatsby-plugin-vercel-builder@2.0.80
+
+## 2.7.5
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @vercel/gatsby-plugin-vercel-builder@2.0.79
+
+## 2.7.4
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @vercel/gatsby-plugin-vercel-builder@2.0.78
+
+## 2.7.3
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @vercel/gatsby-plugin-vercel-builder@2.0.77
+
+## 2.7.2
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @vercel/gatsby-plugin-vercel-builder@2.0.76
+
+## 2.7.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @vercel/gatsby-plugin-vercel-builder@2.0.75
+
+## 2.7.0
+
+### Minor Changes
+
+- Detect v9 pnpm lock files as pnpm 10 for new projects ([#13072](https://github.com/vercel/vercel/pull/13072))
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @vercel/gatsby-plugin-vercel-builder@2.0.74
+
+## 2.6.6
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @vercel/gatsby-plugin-vercel-builder@2.0.73
+
+## 2.6.5
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @vercel/gatsby-plugin-vercel-builder@2.0.72
+
+## 2.6.4
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @vercel/gatsby-plugin-vercel-builder@2.0.71
+
+## 2.6.3
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @vercel/gatsby-plugin-vercel-builder@2.0.70
+
+## 2.6.2
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @vercel/gatsby-plugin-vercel-builder@2.0.69
+
+## 2.6.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @vercel/gatsby-plugin-vercel-builder@2.0.68
+
+## 2.6.0
+
+### Minor Changes
+
+- Add .yarn/cache to build cache ([#12961](https://github.com/vercel/vercel/pull/12961))
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @vercel/gatsby-plugin-vercel-builder@2.0.67
+
+## 2.5.44
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @vercel/gatsby-plugin-vercel-builder@2.0.66
+
+## 2.5.43
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @vercel/gatsby-plugin-vercel-builder@2.0.65
+
+## 2.5.42
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @vercel/gatsby-plugin-vercel-builder@2.0.64
+
 ## 2.5.41
 
 ### Patch Changes

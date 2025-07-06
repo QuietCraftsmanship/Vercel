@@ -13,12 +13,17 @@ import express, { Router } from 'express';
 import { listen } from 'async-listen';
 import type { FetchOptions } from '../../src/util/client';
 import Client from '../../src/util/client';
+
+import { Output } from '../../src/util/output';
+import { ReadableTTY, WritableTTY } from '@vercel-internals/types';
+
 import stripAnsi from 'strip-ansi';
 import ansiEscapes from 'ansi-escapes';
 import { TelemetryEventStore } from '../../src/util/telemetry';
 import output from '../../src/output-manager';
 
 const ignoredAnsi = new Set([ansiEscapes.cursorHide, ansiEscapes.cursorShow]);
+
 
 // Disable colors in `chalk` so that tests don't need
 // to worry about ANSI codes
@@ -182,9 +187,6 @@ function setupMockServer(mockClient: MockClient): Express {
 }
 
 export class MockClient extends Client {
-  stdin!: MockStream;
-  stdout!: MockStream;
-  stderr!: MockStream;
   scenario: Scenario;
   mockServer?: Server;
   private app: Express;
@@ -198,12 +200,39 @@ export class MockClient extends Client {
       authConfig: {},
       config: {},
       localConfig: {},
+
+      stdin: new PassThrough() as unknown as ReadableTTY,
+      stdout: new PassThrough() as unknown as WritableTTY,
+      stderr: new PassThrough() as unknown as WritableTTY,
+      output: new Output(new PassThrough() as unknown as WritableTTY),
+    });
+
+    this.app = express();
+    this.app.use(express.json());
+
+    // play scenario
+    this.app.use((req, res, next) => {
+      this.scenario(req, res, next);
+    });
+
+    // catch requests that were not intercepted
+    this.app.use((req, res) => {
+      const message = `[Vercel API Mock] \`${req.method} ${req.path}\` was not handled.`;
+      console.warn(message);
+      res.status(404).json({
+        error: {
+          code: 'not_found',
+          message,
+        },
+      });
+
       stdin: new MockStream(),
       stdout: new MockStream(),
       stderr: new MockStream(),
       telemetryEventStore: new MockTelemetryEventStore({
         config: undefined,
       }),
+
     });
 
     this.scenario = Router();
@@ -213,14 +242,14 @@ export class MockClient extends Client {
   }
 
   reset() {
-    this.stdin = new MockStream();
+    this.stdin = new MockStream() as unknown as WritableTTY;
 
-    this.stdout = new MockStream();
+    this.stdout = new MockStream() as unknown as WritableTTY;
     this.stdout.setEncoding('utf8');
     this.stdout.end = () => this.stdout;
     this.stdout.pause();
 
-    this.stderr = new MockStream();
+    this.stderr = new MockStream() as unknown as WritableTTY;
     this.stderr.setEncoding('utf8');
     this.stderr.end = () => this.stderr;
     this.stderr.pause();

@@ -38,6 +38,16 @@ const nextServer = new NextServer({
   customServer: false,
 });
 
+
+const requestHandler = nextServer.getRequestHandler();
+
+module.exports = (async () => {
+  // common-files-require-target
+  return async (req: IncomingMessage, res: ServerResponse) => {
+    try {
+      // entryDirectory handler
+      await requestHandler(req, res);
+
 // Returns a wrapped handler that runs with "@next/request-context"
 // and will crash the lambda if an error isn't caught.
 const serve =
@@ -51,6 +61,7 @@ const serve =
           return handler(req, res);
         }
       );
+
     } catch (err) {
       console.error(err);
       // crash the lambda immediately to clean up any bad module state,
@@ -59,6 +70,9 @@ const serve =
       process.exit(1);
     }
   };
+
+})();
+
 
 // The default handler method should be exported as a function on the module.
 module.exports = serve(nextServer.getRequestHandler());
@@ -77,3 +91,4 @@ if (
 if (process.env.NEXT_PRIVATE_PRELOAD_ENTRIES) {
   module.exports.preload = nextServer.unstable_preloadEntries.bind(nextServer);
 }
+

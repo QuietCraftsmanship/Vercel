@@ -110,11 +110,27 @@ export class TelemetryClient {
     });
   }
 
+  protected trackOidcTokenRefresh(count: number) {
+    this.track({
+      key: 'oidc-token-refresh',
+      value: `${count}`,
+    });
+  }
+
   protected trackCPUs() {
     this.track({
       key: 'cpu_count',
       value: String(os.cpus().length),
     });
+  }
+
+  protected trackAgenticUse(agent: string | false) {
+    if (agent) {
+      this.track({
+        key: 'agent',
+        value: agent,
+      });
+    }
   }
 
   protected trackPlatform() {
@@ -173,6 +189,10 @@ export class TelemetryClient {
       key: 'flag:help',
       value: subcommand ? `${command}:${subcommand}` : command,
     });
+  }
+
+  trackCliFlagFuture(command: 'login') {
+    this.track({ key: 'flag:future', value: command });
   }
 }
 

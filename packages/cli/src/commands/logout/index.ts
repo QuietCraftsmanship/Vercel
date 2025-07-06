@@ -13,8 +13,9 @@ import { logoutCommand } from './command';
 import { getFlagsSpecification } from '../../util/get-flags-specification';
 import output from '../../output-manager';
 import { LogoutTelemetryClient } from '../../util/telemetry/commands/logout';
+import { logout as future } from './future';
 
-export default async function main(client: Client): Promise<number> {
+export default async function logout(client: Client): Promise<number> {
   const { authConfig, config } = client;
 
   let parsedArgs = null;
@@ -39,6 +40,10 @@ export default async function main(client: Client): Promise<number> {
     telemetry.trackCliFlagHelp('logout');
     output.print(help(logoutCommand, { columns: client.stderr.columns }));
     return 2;
+  }
+
+  if (authConfig.type === 'oauth') {
+    return await future(client);
   }
 
   if (!authConfig.token) {
@@ -68,12 +73,6 @@ export default async function main(client: Client): Promise<number> {
   }
 
   delete config.currentTeam;
-
-  // The new user might have completely different teams, so
-  // we should wipe the order.
-  if (config.desktop) {
-    delete config.desktop.teamOrder;
-  }
 
   delete authConfig.token;
 

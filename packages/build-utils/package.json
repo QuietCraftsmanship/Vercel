@@ -1,6 +1,6 @@
 {
   "name": "@vercel/build-utils",
-  "version": "9.0.1",
+  "version": "10.6.4",
   "license": "Apache-2.0",
   "main": "./dist/index.js",
   "types": "./dist/index.d.js",
@@ -15,7 +15,7 @@
     "test": "jest --reporters=default --reporters=jest-junit --env node --verbose --bail --runInBand",
     "vitest-run": "vitest -c ../../vitest.config.mts",
     "vitest-unit": "glob --absolute 'test/unit.*test.ts'",
-    "vitest-e2e": "glob --absolute 'test/integration-*.test.ts'",
+    "vitest-e2e": "glob --absolute 'test/integration*.test.ts'",
     "type-check": "tsc --noEmit"
   },
   "devDependencies": {
@@ -35,6 +35,7 @@
     "@types/semver": "6.0.0",
     "@types/yazl": "2.4.2",
     "@vercel/error-utils": "2.0.3",
+    "@vercel/routing-utils": "5.1.0",
     "aggregate-error": "3.0.1",
     "async-retry": "1.2.3",
     "async-sema": "2.1.4",

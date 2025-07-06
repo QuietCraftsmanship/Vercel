@@ -1,9 +1,11 @@
 import type FileRef from './file-ref';
 import type FileFsRef from './file-fs-ref';
 import type FileBlob from './file-blob';
-import type { Lambda } from './lambda';
+import type { Lambda, LambdaArchitecture } from './lambda';
 import type { Prerender } from './prerender';
 import type { EdgeFunction } from './edge-function';
+import type { Span } from './trace';
+import type { HasField } from '@vercel/routing-utils';
 
 export interface Env {
   [name: string]: string | undefined;
@@ -45,17 +47,7 @@ export interface Config {
   [key: string]: unknown;
 }
 
-export type HasField = Array<
-  | {
-      type: 'host';
-      value: string;
-    }
-  | {
-      type: 'header' | 'cookie' | 'query';
-      key: string;
-      value?: string;
-    }
->;
+export type { HasField };
 
 export interface Meta {
   isDev?: boolean;
@@ -115,6 +107,11 @@ export interface BuildOptions {
    * fully processed
    */
   buildCallback?: (opts: Omit<BuildOptions, 'buildCallback'>) => Promise<void>;
+
+  /**
+   * The current trace state from the internal vc tracing
+   */
+  span?: Span;
 }
 
 export interface PrepareCacheOptions {
@@ -322,6 +319,7 @@ export interface PackageJson {
   readonly private?: boolean;
   readonly publishConfig?: PackageJson.PublishConfig;
   readonly packageManager?: string;
+  readonly type?: string;
 }
 
 export interface ConstructorVersion {
@@ -378,11 +376,13 @@ export interface Builder {
 
 export interface BuilderFunctions {
   [key: string]: {
+    architecture?: LambdaArchitecture;
     memory?: number;
     maxDuration?: number;
     runtime?: string;
     includeFiles?: string;
     excludeFiles?: string;
+    experimentalTriggers?: TriggerEvent[];
   };
 }
 
@@ -591,4 +591,38 @@ export interface Chain {
    * The headers to send when making the request to append to the response.
    */
   headers: Record<string, string>;
+}
+
+/**
+ * Queue trigger event for Vercel's queue system.
+ * Handles "queue/v1beta" events with queue-specific configuration.
+ */
+export interface TriggerEvent {
+  /** Event type - must be "queue/v1beta" (REQUIRED) */
+  type: 'queue/v1beta';
+
+  /** Name of the queue topic to consume from (REQUIRED) */
+  topic: string;
+
+  /** Name of the consumer group for this trigger (REQUIRED) */
+  consumer: string;
+
+  /**
+   * Maximum number of retry attempts for failed executions (OPTIONAL)
+   * Behavior when not specified depends on the server's default configuration.
+   */
+  maxAttempts?: number;
+
+  /**
+   * Delay in seconds before retrying failed executions (OPTIONAL)
+   * Behavior when not specified depends on the server's default configuration.
+   */
+  retryAfterSeconds?: number;
+
+  /**
+   * Initial delay in seconds before first execution attempt (OPTIONAL)
+   * Must be 0 or greater. Use 0 for no initial delay.
+   * Behavior when not specified depends on the server's default configuration.
+   */
+  initialDelaySeconds?: number;
 }

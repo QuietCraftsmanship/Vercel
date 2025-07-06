@@ -1,5 +1,7 @@
 import { confirmOption, forceOption, yesOption } from '../../util/arg-common';
 
+export const deprecatedArchiveSplitTgz = 'split-tgz';
+
 export const deployCommand = {
   name: 'deploy',
   aliases: [],
@@ -113,8 +115,15 @@ export const deployCommand = {
       name: 'logs',
       shorthand: 'l',
       type: Boolean,
-      deprecated: false,
+      deprecated: true,
       description: 'Print the build logs',
+    },
+    {
+      name: 'no-logs',
+      shorthand: null,
+      type: Boolean,
+      deprecated: false,
+      description: 'Do not print the build logs',
     },
     {
       name: 'name',

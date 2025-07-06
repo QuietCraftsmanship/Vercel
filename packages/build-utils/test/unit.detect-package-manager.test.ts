@@ -1,5 +1,8 @@
 import { describe, test, expect } from 'vitest';
-import { detectPackageManager } from '../src/fs/run-user-scripts';
+import {
+  detectPackageManager,
+  PNPM_10_PREFERRED_AT,
+} from '../src/fs/run-user-scripts';
 
 describe('Test `detectPackageManager()`', () => {
   describe('with "npm"', () => {
@@ -34,7 +37,7 @@ describe('Test `detectPackageManager()`', () => {
           detectedLockfile: 'pnpm-lock.yaml',
           detectedPackageManager: 'pnpm@6.x',
           pnpmVersionRange: '6.x',
-          path: undefined,
+          path: '/pnpm6/node_modules/.bin',
         },
       },
       {
@@ -78,13 +81,33 @@ describe('Test `detectPackageManager()`', () => {
         },
       },
       {
-        name: 'for 9.0 lockfile returns pnpm 9 path',
+        name: 'for 9.0 lockfile returns pnpm 9 path with no project created time',
         args: ['pnpm', 9.0],
         want: {
           detectedLockfile: 'pnpm-lock.yaml',
           detectedPackageManager: 'pnpm@9.x',
           pnpmVersionRange: '9.x',
           path: '/pnpm9/node_modules/.bin',
+        },
+      },
+      {
+        name: 'for 9.0 lockfile returns pnpm 9 path before prefer pnpm 10 datetime',
+        args: ['pnpm', 9.0, PNPM_10_PREFERRED_AT.getTime() - 1000],
+        want: {
+          detectedLockfile: 'pnpm-lock.yaml',
+          detectedPackageManager: 'pnpm@9.x',
+          pnpmVersionRange: '9.x',
+          path: '/pnpm9/node_modules/.bin',
+        },
+      },
+      {
+        name: 'for 9.0 lockfile returns pnpm 10 path after prefer pnpm 10 datetime',
+        args: ['pnpm', 9.0, PNPM_10_PREFERRED_AT.getTime() + 1000],
+        want: {
+          detectedLockfile: 'pnpm-lock.yaml',
+          detectedPackageManager: 'pnpm@10.x',
+          pnpmVersionRange: '10.x',
+          path: '/pnpm10/node_modules/.bin',
         },
       },
       {
@@ -98,10 +121,10 @@ describe('Test `detectPackageManager()`', () => {
         want: undefined,
       },
     ])('$name', ({ args, want }) => {
-      const [cliType, lockfileVersion] = args;
-      expect(detectPackageManager(cliType, lockfileVersion)).toStrictEqual(
-        want
-      );
+      const [cliType, lockfileVersion, preferredAt] = args;
+      expect(
+        detectPackageManager(cliType, lockfileVersion, preferredAt)
+      ).toStrictEqual(want);
     });
   });
 
@@ -112,12 +135,39 @@ describe('Test `detectPackageManager()`', () => {
       want: unknown;
     }>([
       {
-        name: 'does not return a path',
+        name: 'yarn@1.x does not return a path',
         args: ['yarn', 1],
         want: {
           path: undefined,
           detectedLockfile: 'yarn.lock',
-          detectedPackageManager: 'yarn',
+          detectedPackageManager: 'yarn@1.x',
+        },
+      },
+      {
+        name: 'yarn@2.x does not return a path',
+        args: ['yarn', 4],
+        want: {
+          path: undefined,
+          detectedLockfile: 'yarn.lock',
+          detectedPackageManager: 'yarn@2.x',
+        },
+      },
+      {
+        name: 'yarn@3.x does not return a path',
+        args: ['yarn', 6],
+        want: {
+          path: undefined,
+          detectedLockfile: 'yarn.lock',
+          detectedPackageManager: 'yarn@3.x',
+        },
+      },
+      {
+        name: 'yarn@4.x does not return a path',
+        args: ['yarn', 8],
+        want: {
+          path: undefined,
+          detectedLockfile: 'yarn.lock',
+          detectedPackageManager: 'yarn@4.x',
         },
       },
     ])('$name', ({ args, want }) => {

@@ -28,7 +28,7 @@ export const NODE_VERSIONS: NodeVersion[] = [
     major: 16,
     range: '16.x',
     runtime: 'nodejs16.x',
-    discontinueDate: new Date('2025-01-31'),
+    discontinueDate: new Date('2025-02-03'),
   }),
   new NodeVersion({
     major: 14,
@@ -55,6 +55,10 @@ export const NODE_VERSIONS: NodeVersion[] = [
     discontinueDate: new Date('2020-01-06'),
   }),
 ];
+
+export function getNodeVersionByMajor(major: number): NodeVersion | undefined {
+  return NODE_VERSIONS.find(v => v.major === major);
+}
 
 function getOptions() {
   return NODE_VERSIONS;

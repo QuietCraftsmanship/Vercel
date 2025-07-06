@@ -1,5 +1,4 @@
 import path from 'path';
-import url from 'url';
 import semver from 'semver';
 import { Sema } from 'async-sema';
 import {
@@ -55,6 +54,8 @@ import {
   MAX_UNCOMPRESSED_LAMBDA_SIZE,
   RenderingMode,
   getPostponeResumeOutput,
+  getNodeMiddleware,
+  getStaticSegmentRoutes,
 } from './utils';
 import {
   nodeFileTrace,
@@ -146,6 +147,7 @@ export async function serverBuild({
   variantsManifest,
   experimentalPPRRoutes,
   isAppPPREnabled,
+  isAppClientSegmentCacheEnabled,
 }: {
   appPathRoutesManifest?: Record<string, string>;
   dynamicPages: string[];
@@ -188,6 +190,7 @@ export async function serverBuild({
   variantsManifest: VariantsManifest | null;
   experimentalPPRRoutes: ReadonlySet<string>;
   isAppPPREnabled: boolean;
+  isAppClientSegmentCacheEnabled: boolean;
 }): Promise<BuildResult> {
   if (isAppPPREnabled) {
     debug(
@@ -200,6 +203,9 @@ export async function serverBuild({
 
   const experimentalAllowBundling = Boolean(
     process.env.NEXT_EXPERIMENTAL_FUNCTION_BUNDLING
+  );
+  const skipDefaultLocaleRewrite = Boolean(
+    process.env.NEXT_EXPERIMENTAL_DEFER_DEFAULT_LOCALE_REWRITE
   );
 
   const lambdas: { [key: string]: Lambda } = {};
@@ -257,31 +263,72 @@ export async function serverBuild({
         // If this doesn't have a src or dest, we can't modify it.
         if (!rewrite.src || !rewrite.dest) continue;
 
-        // Parse the destination URL to get the protocol, pathname, and query
-        // before we mutate the destination.
-        const { protocol, pathname, query } = url.parse(rewrite.dest);
+        // We're not using the url.parse here because the destination is not
+        // guaranteed to be a valid URL, it's a pattern, where the domain may
+        // include patterns like `https://:subdomain.example.com` that would not
+        // be parsed correctly.
+
+        let protocol: string | null = null;
+        if (rewrite.dest.startsWith('http://')) {
+          protocol = 'http://';
+        } else if (rewrite.dest.startsWith('https://')) {
+          protocol = 'https://';
+        }
+
+        // We only support adding rewrite headers to routes that do not have
+        // a protocol, so don't bother trying to parse the pathname if there is
+        // a protocol.
+        let pathname: string | null = null;
+        let query: string | null = null;
+        if (!protocol) {
+          // Start with the full destination as the pathname. If there's a query
+          // then we'll remove it.
+          pathname = rewrite.dest;
+
+          let index = pathname.indexOf('?');
+          if (index !== -1) {
+            query = pathname.substring(index + 1);
+            pathname = pathname.substring(0, index);
+
+            // If there's a hash, we should remove it.
+            index = query.indexOf('#');
+            if (index !== -1) {
+              query = query.substring(0, index);
+            }
+          } else {
+            // If there's a hash, we should remove it.
+            index = pathname.indexOf('#');
+            if (index !== -1) {
+              pathname = pathname.substring(0, index);
+            }
+          }
+        }
 
         if (isAfterFilesRewrite) {
           // ensures that userland rewrites are still correctly matched to their special outputs
           // PPR should match .prefetch.rsc, .rsc
           // non-PPR should match .rsc
-          const rscSuffix = isAppPPREnabled ? `(\\.prefetch)?\\.rsc` : '\\.rsc';
+          const parts = ['\\.rsc'];
+          if (isAppPPREnabled) {
+            parts.push('\\.prefetch\\.rsc');
+          }
+          if (isAppClientSegmentCacheEnabled) {
+            parts.push('\\.segments/.+\\.segment\\.rsc');
+          }
+
+          const rscSuffix = parts.join('|');
 
           rewrite.src = rewrite.src.replace(
             /\/?\(\?:\/\)\?/,
-            `(?<rscsuff>${rscSuffix})?(?:/)?`
+            `(?:/)?(?<rscsuff>${rscSuffix})?`
           );
 
-          let destQueryIndex = rewrite.dest.indexOf('?');
-
+          const destQueryIndex = rewrite.dest.indexOf('?');
           if (destQueryIndex === -1) {
-            destQueryIndex = rewrite.dest.length;
+            rewrite.dest = `${rewrite.dest}$rscsuff`;
+          } else {
+            rewrite.dest = `${rewrite.dest.substring(0, destQueryIndex)}$rscsuff${rewrite.dest.substring(destQueryIndex)}`;
           }
-
-          rewrite.dest =
-            rewrite.dest.substring(0, destQueryIndex) +
-            '$rscsuff' +
-            rewrite.dest.substring(destQueryIndex);
         }
 
         // If the rewrite headers are not enabled, we don't need to add the
@@ -357,6 +404,14 @@ export async function serverBuild({
 
         const updated: Route = {
           ...rewrite,
+          // We don't want to perform the actual rewrite here, instead we want
+          // to just add the headers associated with the rewrite.
+          dest: undefined,
+          // We don't want to check here, so omit the check property but we do
+          // want to maintain the order of the rewrites, so add the continue
+          // property.
+          check: undefined,
+          continue: true,
           has,
           headers,
         };
@@ -436,6 +491,7 @@ export async function serverBuild({
   const lstatSema = new Sema(25);
   const lstatResults: { [key: string]: ReturnType<typeof lstat> } = {};
   const nonLambdaSsgPages = new Set<string>();
+  const static404Pages = new Set<string>(static404Page ? [static404Page] : []);
 
   Object.keys(prerenderManifest.staticRoutes).forEach(route => {
     const result = onPrerenderRouteInitial(
@@ -450,6 +506,8 @@ export async function serverBuild({
     );
 
     if (result && result.static404Page) {
+      // there can be multiple 404 pages (eg i18n) so we want to keep track of all of them
+      static404Pages.add(result.static404Page);
       static404Page = result.static404Page;
     }
 
@@ -491,10 +549,6 @@ export async function serverBuild({
     const initialTracingLabel = 'Traced Next.js server files in';
 
     console.time(initialTracingLabel);
-
-    const initialTracedFiles: {
-      [filePath: string]: FileFsRef;
-    } = {};
 
     let initialFileList: string[];
     let initialFileReasons: NodeFileTraceReasons;
@@ -599,16 +653,21 @@ export async function serverBuild({
     }
 
     debug('collecting initial Next.js server files');
-    await Promise.all(
-      initialFileList.map(
-        collectTracedFiles(
-          baseDir,
-          lstatResults,
-          lstatSema,
-          initialFileReasons,
-          initialTracedFiles
+    const initialTracedFiles: {
+      [filePath: string]: FileFsRef;
+    } = Object.fromEntries(
+      (
+        await Promise.all(
+          initialFileList.map(
+            collectTracedFiles(
+              baseDir,
+              lstatResults,
+              lstatSema,
+              initialFileReasons
+            )
+          )
         )
-      )
+      ).filter((entry): entry is [string, FileFsRef] => !!entry)
     );
 
     debug('creating initial pseudo layer');
@@ -662,36 +721,40 @@ export async function serverBuild({
       fsPath: nextServerFile,
     });
 
-    if (static404Page) {
-      // ensure static 404 page file is included in all lambdas
-      // for notFound GS(S)P support
-
+    if (static404Pages.size > 0) {
+      // If we've generated a static 404 page, it's possible that we also
+      // have a static 404 page for each locale.
       if (i18n) {
         for (const locale of i18n.locales) {
-          let static404File =
-            staticPages[path.posix.join(entryDirectory, locale, '/404')];
+          const static404Page = path.posix.join(entryDirectory, locale, '404');
+          static404Pages.add(static404Page);
+        }
+      }
 
-          if (!static404File) {
+      for (const static404Page of static404Pages) {
+        let static404File = staticPages[static404Page];
+
+        if (!static404File) {
+          // if we have a file ref already, we can use it. Otherwise, we need
+          // to create a new one, but we need to ensure it exists on disk
+          const static404FilePath = path.join(
+            pagesDir,
+            `${static404Page}.html`
+          );
+
+          if (fs.existsSync(static404FilePath)) {
             static404File = new FileFsRef({
-              fsPath: path.join(pagesDir, locale, '/404.html'),
+              fsPath: static404FilePath,
             });
-            if (!fs.existsSync(static404File.fsPath)) {
-              static404File = new FileFsRef({
-                fsPath: path.join(pagesDir, '/404.html'),
-              });
-            }
           }
+        }
+
+        // ensure each static 404 page file is included in all lambdas
+        // for notFound GS(S)P support
+        if (static404File) {
           requiredFiles[path.relative(baseDir, static404File.fsPath)] =
             static404File;
         }
-      } else {
-        const static404File =
-          staticPages[static404Page] ||
-          new FileFsRef({
-            fsPath: path.join(pagesDir, '/404.html'),
-          });
-        requiredFiles[path.relative(baseDir, static404File.fsPath)] =
-          static404File;
       }
     }
 
@@ -903,7 +966,6 @@ export async function serverBuild({
     }
 
     for (const page of mergedPageKeys) {
-      const tracedFiles: { [key: string]: FileFsRef } = {};
       const originalPagePath = getOriginalPagePath(page);
       const pageBuildTrace = getBuildTraceFile(originalPagePath);
       let fileList: string[];
@@ -973,17 +1035,18 @@ export async function serverBuild({
         reasons = traceResult?.reasons || new Map();
       }
 
-      await Promise.all(
-        fileList.map(
-          collectTracedFiles(
-            baseDir,
-            lstatResults,
-            lstatSema,
-            reasons,
-            tracedFiles
+      const tracedFiles: {
+        [filePath: string]: FileFsRef;
+      } = Object.fromEntries(
+        (
+          await Promise.all(
+            fileList.map(
+              collectTracedFiles(baseDir, lstatResults, lstatSema, reasons)
+            )
           )
-        )
+        ).filter((entry): entry is [string, FileFsRef] => !!entry)
       );
+
       pageTraces[page] = tracedFiles;
       compressedPages[page] = (
         await createPseudoLayer({
@@ -1161,6 +1224,7 @@ export async function serverBuild({
       appNotFoundTraces && (await createPseudoLayer(appNotFoundTraces));
 
     for (const group of combinedGroups) {
+      let commonRequiredFiles: string[] | undefined = undefined;
       const groupPageFiles: { [key: string]: PseudoFile } = {};
 
       for (const page of [
@@ -1172,6 +1236,42 @@ export async function serverBuild({
           path.relative(baseDir, lambdaPages[page].fsPath)
         );
         groupPageFiles[pageFileName] = compressedPages[page];
+
+        const traceFile = getBuildTraceFile(getOriginalPagePath(page));
+        if (traceFile && !internalPages.includes(page)) {
+          const { files } = JSON.parse(
+            await fs.readFile(traceFile.fsPath, 'utf8')
+          );
+          const isAppPath = appDir && lambdaAppPaths[page];
+          const curPagesDir = isAppPath && appDir ? appDir : pagesDir;
+          const originalPagePath = getOriginalPagePath(page);
+          const pageDir = path.dirname(
+            path.join(curPagesDir, originalPagePath)
+          );
+          const normalizedBaseDir = `${baseDir}${
+            baseDir.endsWith(path.sep) ? '' : path.sep
+          }`;
+
+          const newCommonRequiredFiles: string[] = [];
+          files.forEach((file: string) => {
+            const absolutePath = path.join(pageDir, file);
+            if (
+              absolutePath.startsWith(normalizedBaseDir) &&
+              (commonRequiredFiles ? commonRequiredFiles.includes(file) : true)
+            ) {
+              let relPath = path.relative(
+                path.resolve(baseDir),
+                path.resolve(absolutePath)
+              );
+              if (!relPath.startsWith('..')) {
+                relPath = './' + relPath;
+              }
+              newCommonRequiredFiles.push(relPath);
+            }
+          });
+
+          commonRequiredFiles = newCommonRequiredFiles;
+        }
       }
 
       const updatedManifestFiles: { [name: string]: FileBlob } = {};
@@ -1249,6 +1349,17 @@ export async function serverBuild({
         }
       }
 
+
+      let launcherContent = group.isAppRouter ? appLauncher : launcher;
+
+      if (commonRequiredFiles && commonRequiredFiles.length > 0) {
+        launcherContent = launcherContent.replace(
+          '// common-files-require-target',
+          `const commonFiles = ${JSON.stringify(
+            commonRequiredFiles
+          )};await Promise.all(commonFiles.map(file => import(file)));`
+        );
+
       let launcherData = group.isAppRouter ? appLauncher : launcher;
       let preloadChunks: string[] = [];
 
@@ -1296,11 +1407,16 @@ export async function serverBuild({
               .join('\n')
           );
         }
+
       }
 
       const launcherFiles: { [name: string]: FileFsRef | FileBlob } = {
         [path.join(path.relative(baseDir, projectDir), '___next_launcher.cjs')]:
+
+          new FileBlob({ data: launcherContent }),
+
           new FileBlob({ data: launcherData }),
+
       };
       const operationType = getOperationType({ group, prerenderManifest });
 
@@ -1321,6 +1437,7 @@ export async function serverBuild({
         isStreaming: group.isStreaming,
         nextVersion,
         experimentalAllowBundling,
+        experimentalTriggers: group.experimentalTriggers,
       };
 
       // the app _not-found output should always be included
@@ -1476,6 +1593,7 @@ export async function serverBuild({
     isCorrectNotFoundRoutes,
     isEmptyAllowQueryForPrendered,
     isAppPPREnabled,
+    isAppClientSegmentCacheEnabled,
   });
 
   await Promise.all(
@@ -1528,6 +1646,24 @@ export async function serverBuild({
     ];
   });
 
+  const nodeMiddleware = await getNodeMiddleware({
+    config,
+    baseDir,
+    projectDir,
+    entryPath,
+    nextVersion,
+    nodeVersion: nodeVersion.runtime,
+    lstatSema,
+    lstatResults,
+    pageExtensions: requiredServerFilesManifest.config.pageExtensions,
+    routesManifest,
+    outputDirectory,
+    prerenderBypassToken: prerenderManifest.bypassToken as string,
+    isCorrectMiddlewareOrder,
+    functionsConfigManifest,
+    requiredServerFilesManifest,
+  });
+
   const middleware = await getMiddlewareBundle({
     config,
     entryPath,
@@ -1540,8 +1676,15 @@ export async function serverBuild({
   });
 
   const isNextDataServerResolving =
-    middleware.staticRoutes.length > 0 &&
+    (middleware.staticRoutes.length > 0 || nodeMiddleware) &&
     semver.gte(nextVersion, NEXT_DATA_MIDDLEWARE_RESOLVING_VERSION);
+
+  const staticSegmentRoutes = isAppClientSegmentCacheEnabled
+    ? await getStaticSegmentRoutes({
+        entryDirectory,
+        routesManifest,
+      })
+    : [];
 
   const dynamicRoutes = await getDynamicRoutes({
     entryPath,
@@ -1555,6 +1698,7 @@ export async function serverBuild({
     isServerMode: true,
     dynamicMiddlewareRouteMap: middleware.dynamicRouteMap,
     isAppPPREnabled,
+    isAppClientSegmentCacheEnabled,
   }).then(arr =>
     localizeDynamicRoutes(
       arr,
@@ -1745,6 +1889,10 @@ export async function serverBuild({
     }
   }
 
+  const prefetchSegmentHeader = routesManifest?.rsc?.prefetchSegmentHeader;
+  const prefetchSegmentDirSuffix =
+    routesManifest?.rsc?.prefetchSegmentDirSuffix;
+  const prefetchSegmentSuffix = routesManifest?.rsc?.prefetchSegmentSuffix;
   const rscPrefetchHeader = routesManifest.rsc?.prefetchHeader?.toLowerCase();
   const rscVaryHeader =
     routesManifest?.rsc?.varyHeader ||
@@ -1815,6 +1963,7 @@ export async function serverBuild({
       ...staticDirectoryFiles,
       ...privateOutputs.files,
       ...middleware.edgeFunctions,
+      ...nodeMiddleware?.lambdas,
       ...(isNextDataServerResolving
         ? {
             __next_data_catchall: nextDataCatchallOutput,
@@ -1941,6 +2090,14 @@ export async function serverBuild({
                     },
                     continue: true,
                   },
+                ]
+              : []),
+
+            // We only want to add these rewrites before user redirects
+            // when `skipDefaultLocaleRewrite` is not flagged on
+            // and when localeDetection is enabled.
+            ...(!skipDefaultLocaleRewrite || i18n.localeDetection !== false
+              ? [
                   {
                     src: `^${path.posix.join('/', entryDirectory)}$`,
                     dest: `${path.posix.join(
@@ -1985,7 +2142,9 @@ export async function serverBuild({
         ? denormalizeNextDataRoute(true)
         : []),
 
-      ...(isCorrectMiddlewareOrder ? middleware.staticRoutes : []),
+      ...(isCorrectMiddlewareOrder
+        ? [...middleware.staticRoutes, ...(nodeMiddleware?.routes || [])]
+        : []),
 
       ...(routesManifest?.skipMiddlewareUrlNormalize
         ? normalizeNextDataRoute(true)
@@ -2059,14 +2218,78 @@ export async function serverBuild({
       // while middleware was in beta the order came right before
       // handle: 'filesystem' we maintain this for older versions
       // to prevent a local/deploy mismatch
-      ...(!isCorrectMiddlewareOrder ? middleware.staticRoutes : []),
+      ...(!isCorrectMiddlewareOrder
+        ? [...middleware.staticRoutes, ...(nodeMiddleware?.routes || [])]
+        : []),
 
       ...(appDir
         ? [
+            ...(isAppClientSegmentCacheEnabled &&
+            rscPrefetchHeader &&
+            prefetchSegmentHeader &&
+            prefetchSegmentDirSuffix &&
+            prefetchSegmentSuffix
+              ? [
+                  {
+                    src: path.posix.join('/', entryDirectory, '/(?<path>.+)$'),
+                    dest: path.posix.join(
+                      '/',
+                      entryDirectory,
+                      `/$path${prefetchSegmentDirSuffix}/$segmentPath${prefetchSegmentSuffix}`
+                    ),
+                    has: [
+                      {
+                        type: 'header',
+                        key: rscHeader,
+                        value: '1',
+                      },
+                      {
+                        type: 'header',
+                        key: rscPrefetchHeader,
+                        value: '1',
+                      },
+                      {
+                        type: 'header',
+                        key: prefetchSegmentHeader,
+                        value: '/(?<segmentPath>.+)',
+                      },
+                    ],
+                    continue: true,
+                    override: true,
+                  },
+                  {
+                    src: path.posix.join('^/', entryDirectory, '$'),
+                    dest: path.posix.join(
+                      '/',
+                      entryDirectory,
+                      `/index${prefetchSegmentDirSuffix}/$segmentPath${prefetchSegmentSuffix}`
+                    ),
+                    has: [
+                      {
+                        type: 'header',
+                        key: rscHeader,
+                        value: '1',
+                      },
+                      {
+                        type: 'header',
+                        key: rscPrefetchHeader,
+                        value: '1',
+                      },
+                      {
+                        type: 'header',
+                        key: prefetchSegmentHeader,
+                        value: '/(?<segmentPath>.+)',
+                      },
+                    ],
+                    continue: true,
+                    override: true,
+                  },
+                ]
+              : []),
             ...(rscPrefetchHeader && isAppPPREnabled
               ? [
                   {
-                    src: `^${path.posix.join('/', entryDirectory, '/')}`,
+                    src: `^${path.posix.join('/', entryDirectory, '/')}$`,
                     has: [
                       {
                         type: 'header',
@@ -2254,7 +2477,9 @@ export async function serverBuild({
       // to allow checking non-prefixed lambda outputs
       ...(i18n
         ? [
-            ...(i18n.localeDetection === false
+            // When `skipDefaultLocaleRewrite` is flagged on and localeDetection is disabled,
+            // we only want to add the rewrite as the fallback case once routing is complete.
+            ...(skipDefaultLocaleRewrite && i18n.localeDetection === false
               ? [
                   {
                     src: `^${path.posix.join('/', entryDirectory)}$`,
@@ -2401,6 +2626,8 @@ export async function serverBuild({
           ]
         : []),
 
+      ...staticSegmentRoutes,
+
       // Dynamic routes (must come after dataRoutes as dataRoutes are more
       // specific)
       ...dynamicRoutes,
@@ -2432,6 +2659,30 @@ export async function serverBuild({
                 '/(.*).json'
               )}`,
               dest: '__next_data_catchall',
+            },
+          ]
+        : []),
+
+      // If it didn't match any of the static routes or dynamic ones, then we
+      // should fallback to the regular RSC request.
+      ...(isAppClientSegmentCacheEnabled &&
+      rscPrefetchHeader &&
+      prefetchSegmentHeader &&
+      prefetchSegmentDirSuffix &&
+      prefetchSegmentSuffix
+        ? [
+            {
+              src: path.posix.join(
+                '/',
+                entryDirectory,
+                `/(?<path>.+)${escapeStringRegexp(prefetchSegmentDirSuffix)}/.+${escapeStringRegexp(prefetchSegmentSuffix)}$`
+              ),
+              dest: path.posix.join(
+                '/',
+                entryDirectory,
+                isAppPPREnabled ? '/$path.prefetch.rsc' : '/$path.rsc'
+              ),
+              check: true,
             },
           ]
         : []),

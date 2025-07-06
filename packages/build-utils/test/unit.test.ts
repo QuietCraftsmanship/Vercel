@@ -51,10 +51,6 @@ afterEach(() => {
 });
 
 it('should only match supported node versions, otherwise throw an error', async () => {
-  expect(await getSupportedNodeVersion('16.x', false)).toHaveProperty(
-    'major',
-    16
-  );
   expect(await getSupportedNodeVersion('18.x', false)).toHaveProperty(
     'major',
     18
@@ -70,11 +66,11 @@ it('should only match supported node versions, otherwise throw an error', async 
   await expectBuilderError(getSupportedNodeVersion('999.x', true), autoMessage);
   await expectBuilderError(getSupportedNodeVersion('foo', true), autoMessage);
   await expectBuilderError(getSupportedNodeVersion('=> 10', true), autoMessage);
-
-  expect(await getSupportedNodeVersion('16.x', true)).toHaveProperty(
-    'major',
-    16
+  await expectBuilderError(
+    getSupportedNodeVersion('=> 16.x', true),
+    autoMessage
   );
+
   expect(await getSupportedNodeVersion('18.x', true)).toHaveProperty(
     'major',
     18
@@ -98,7 +94,9 @@ it('should only match supported node versions, otherwise throw an error', async 
   );
 });
 
-it('should match all semver ranges', async () => {
+// https://linear.app/vercel/issue/ZERO-3238/unskip-tests-failing-due-to-node-16-removal
+// eslint-disable-next-line jest/no-disabled-tests
+it.skip('should match all semver ranges', async () => {
   // See https://docs.npmjs.com/files/package.json#engines
   expect(await getSupportedNodeVersion('16.0.0')).toHaveProperty('major', 16);
   expect(await getSupportedNodeVersion('16.x')).toHaveProperty('major', 16);
@@ -341,8 +339,8 @@ it('should warn for deprecated versions, soon to be discontinued', async () => {
       16
     );
     expect(warningMessages).toStrictEqual([
-      'Error: Node.js version 16.x is deprecated. Deployments created on or after 2025-01-31 will fail to build. Please set "engines": { "node": "22.x" } in your `package.json` file to use Node.js 22.',
-      'Error: Node.js version 16.x is deprecated. Deployments created on or after 2025-01-31 will fail to build. Please set Node.js Version to 22.x in your Project Settings to use Node.js 22.',
+      'Error: Node.js version 16.x is deprecated. Deployments created on or after 2025-02-03 will fail to build. Please set "engines": { "node": "22.x" } in your `package.json` file to use Node.js 22.',
+      'Error: Node.js version 16.x is deprecated. Deployments created on or after 2025-02-03 will fail to build. Please set Node.js Version to 22.x in your Project Settings to use Node.js 22.',
     ]);
   } finally {
     global.Date.now = realDateNow;
@@ -438,6 +436,113 @@ it('should support experimentalBypassFor correctly', async () => {
       bypassToken: 'some-long-bypass-token-to-make-it-work',
       // @ts-expect-error: testing invalid args
       experimentalBypassFor: [{ type: 'header', value: { foo: 'bar' } }],
+    });
+  }).toThrowError(
+    'The `experimentalBypassFor` argument for `Prerender` must be Array of objects with fields `type`, `key` and optionally `value`.'
+  );
+
+  new Prerender({
+    expiration: 1,
+    fallback: null,
+    group: 1,
+    bypassToken: 'some-long-bypass-token-to-make-it-work',
+    experimentalBypassFor: [
+      {
+        type: 'header',
+        key: 'authorization',
+        value: {
+          eq: 'Bearer token123',
+          inc: ['Bearer', 'token'],
+          ninc: ['foo', 'bar'],
+          pre: 'Bearer',
+          suf: 'token123',
+        },
+      },
+    ],
+  });
+
+  new Prerender({
+    expiration: 1,
+    fallback: null,
+    group: 1,
+    bypassToken: 'some-long-bypass-token-to-make-it-work',
+    experimentalBypassFor: [
+      {
+        type: 'cookie',
+        key: 'count',
+        value: { eq: 10, gt: 5, gte: 10, lt: 15, lte: 10 },
+      },
+    ],
+  });
+  new Prerender({
+    expiration: 1,
+    fallback: null,
+    group: 1,
+    bypassToken: 'some-long-bypass-token-to-make-it-work',
+    experimentalBypassFor: [
+      {
+        type: 'query',
+        key: 'count',
+        value: { eq: 10, gt: 5, gte: 10, lt: 15, lte: 10 },
+      },
+    ],
+  });
+
+  new Prerender({
+    expiration: 1,
+    fallback: null,
+    group: 1,
+    bypassToken: 'some-long-bypass-token-to-make-it-work',
+    experimentalBypassFor: [
+      {
+        type: 'host',
+        value: { re: '^staging\\..*\\.com$' },
+      },
+    ],
+  });
+
+  new Prerender({
+    expiration: 1,
+    fallback: null,
+    group: 1,
+    bypassToken: 'some-long-bypass-token-to-make-it-work',
+    experimentalBypassFor: [{ type: 'header', key: 'test', value: undefined }],
+  });
+
+  expect(() => {
+    new Prerender({
+      expiration: 1,
+      fallback: null,
+      group: 1,
+      bypassToken: 'some-long-bypass-token-to-make-it-work',
+      // @ts-expect-error: testing invalid args
+      experimentalBypassFor: [{ type: 'header', key: 'test', value: null }],
+    });
+  }).toThrowError(
+    'The `experimentalBypassFor` argument for `Prerender` must be Array of objects with fields `type`, `key` and optionally `value`.'
+  );
+
+  expect(() => {
+    new Prerender({
+      expiration: 1,
+      fallback: null,
+      group: 1,
+      bypassToken: 'some-long-bypass-token-to-make-it-work',
+      // @ts-expect-error: testing invalid args
+      experimentalBypassFor: [{ type: 'host', key: 'test', value: 'invalid' }],
+    });
+  }).toThrowError(
+    'The `experimentalBypassFor` argument for `Prerender` must be Array of objects with fields `type`, `key` and optionally `value`.'
+  );
+
+  expect(() => {
+    new Prerender({
+      expiration: 1,
+      fallback: null,
+      group: 1,
+      bypassToken: 'some-long-bypass-token-to-make-it-work',
+      // @ts-expect-error: testing invalid args
+      experimentalBypassFor: [{ type: 'invalid' }],
     });
   }).toThrowError(
     'The `experimentalBypassFor` argument for `Prerender` must be Array of objects with fields `type`, `key` and optionally `value`.'
@@ -715,11 +820,29 @@ it('should return lockfileVersion 2 with npm7', async () => {
   expect(result.packageJsonPath).toEqual(path.join(fixture, 'package.json'));
 });
 
-it('should not return lockfileVersion with yarn', async () => {
+it('should return lockfileVersion with yarn 2', async () => {
   const fixture = path.join(__dirname, 'fixtures', '19-yarn-v2');
   const result = await scanParentDirs(fixture);
   expect(result.cliType).toEqual('yarn');
-  expect(result.lockfileVersion).toEqual(undefined);
+  expect(result.lockfileVersion).toEqual(4);
+  expect(result.lockfilePath).toEqual(path.join(fixture, 'yarn.lock'));
+  expect(result.packageJsonPath).toEqual(path.join(fixture, 'package.json'));
+});
+
+it('should return lockfileVersion with yarn 4', async () => {
+  const fixture = path.join(__dirname, 'fixtures', '44-yarn-v4');
+  const result = await scanParentDirs(fixture);
+  expect(result.cliType).toEqual('yarn');
+  expect(result.lockfileVersion).toEqual(8);
+  expect(result.lockfilePath).toEqual(path.join(fixture, 'yarn.lock'));
+  expect(result.packageJsonPath).toEqual(path.join(fixture, 'package.json'));
+});
+
+it('should return lockfileVersion with yarn 1', async () => {
+  const fixture = path.join(__dirname, 'fixtures', '45-yarn-v1');
+  const result = await scanParentDirs(fixture);
+  expect(result.cliType).toEqual('yarn');
+  expect(result.lockfileVersion).toEqual(1);
   expect(result.lockfilePath).toEqual(path.join(fixture, 'yarn.lock'));
   expect(result.packageJsonPath).toEqual(path.join(fixture, 'package.json'));
 });

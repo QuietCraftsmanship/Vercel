@@ -1,4 +1,7 @@
-import { getPathOverrideForPackageManager } from '../src/fs/run-user-scripts';
+import {
+  getPathOverrideForPackageManager,
+  PNPM_10_PREFERRED_AT,
+} from '../src/fs/run-user-scripts';
 import {
   describe,
   beforeEach,
@@ -8,6 +11,7 @@ import {
   MockInstance,
   afterEach,
 } from 'vitest';
+import { getNodeVersionByMajor } from '../src/fs/node-version';
 
 describe('Test `getPathOverrideForPackageManager()`', () => {
   describe('with no corepack package manger', () => {
@@ -16,7 +20,7 @@ describe('Test `getPathOverrideForPackageManager()`', () => {
         cliType: 'pnpm',
         lockfileVersion: 9.0,
         corepackPackageManager: undefined,
-        nodeVersion: { major: 16, range: '16.x', runtime: 'nodejs16.x' },
+        nodeVersion: getNodeVersionByMajor(16),
       });
       expect(result).toStrictEqual({
         detectedLockfile: 'pnpm-lock.yaml',
@@ -33,7 +37,7 @@ describe('Test `getPathOverrideForPackageManager()`', () => {
         cliType: 'pnpm',
         lockfileVersion: undefined,
         corepackPackageManager: 'pnpm@9.5.0',
-        nodeVersion: { major: 16, range: '16.x', runtime: 'nodejs16.x' },
+        nodeVersion: getNodeVersionByMajor(16),
       });
       expect(result).toStrictEqual({
         detectedLockfile: undefined,
@@ -44,19 +48,39 @@ describe('Test `getPathOverrideForPackageManager()`', () => {
   });
 
   describe('without corepack enabled', () => {
-    test('should return detected package manager', () => {
-      const result = getPathOverrideForPackageManager({
-        cliType: 'pnpm',
-        lockfileVersion: 9.0,
-        corepackPackageManager: 'pnpm@9.5.0',
-        nodeVersion: { major: 16, range: '16.x', runtime: 'nodejs16.x' },
-        corepackEnabled: false,
+    describe('with `pnpm-lock.yaml` v9', () => {
+      test('should return pnpm@9 for projects created before PNPM_10_PREFFERRED_AT', () => {
+        const result = getPathOverrideForPackageManager({
+          cliType: 'pnpm',
+          lockfileVersion: 9.0,
+          corepackPackageManager: 'pnpm@9.5.0',
+          nodeVersion: getNodeVersionByMajor(16),
+          corepackEnabled: false,
+          projectCreatedAt: PNPM_10_PREFERRED_AT.getTime() - 1000,
+        });
+        expect(result).toStrictEqual({
+          detectedLockfile: 'pnpm-lock.yaml',
+          detectedPackageManager: 'pnpm@9.x',
+          path: '/pnpm9/node_modules/.bin',
+          pnpmVersionRange: '9.x',
+        });
       });
-      expect(result).toStrictEqual({
-        detectedLockfile: 'pnpm-lock.yaml',
-        detectedPackageManager: 'pnpm@9.x',
-        path: '/pnpm9/node_modules/.bin',
-        pnpmVersionRange: '9.x',
+
+      test('should return pnpm@10 for projects created after PNPM_10_PREFFERRED_AT', () => {
+        const result = getPathOverrideForPackageManager({
+          cliType: 'pnpm',
+          lockfileVersion: 9.0,
+          corepackPackageManager: 'pnpm@9.5.0',
+          nodeVersion: getNodeVersionByMajor(16),
+          corepackEnabled: false,
+          projectCreatedAt: PNPM_10_PREFERRED_AT.getTime() + 1000,
+        });
+        expect(result).toStrictEqual({
+          detectedLockfile: 'pnpm-lock.yaml',
+          detectedPackageManager: 'pnpm@10.x',
+          path: '/pnpm10/node_modules/.bin',
+          pnpmVersionRange: '10.x',
+        });
       });
     });
   });
@@ -67,7 +91,7 @@ describe('Test `getPathOverrideForPackageManager()`', () => {
         cliType: 'pnpm',
         lockfileVersion: 9.0,
         corepackPackageManager: 'pnpm@9.5.0',
-        nodeVersion: { major: 16, range: '16.x', runtime: 'nodejs16.x' },
+        nodeVersion: getNodeVersionByMajor(16),
       });
       expect(result).toStrictEqual({
         detectedLockfile: undefined,
@@ -85,7 +109,7 @@ describe('Test `getPathOverrideForPackageManager()`', () => {
             cliType: 'pnpm',
             lockfileVersion: 6.1,
             corepackPackageManager: undefined,
-            nodeVersion: { major: 16, range: '16.x', runtime: 'nodejs16.x' },
+            nodeVersion: getNodeVersionByMajor(16),
             packageJsonEngines: { pnpm: '>=9.0.0' },
           });
         }).toThrow(
@@ -99,7 +123,7 @@ describe('Test `getPathOverrideForPackageManager()`', () => {
             cliType: 'pnpm',
             lockfileVersion: 6.1,
             corepackPackageManager: 'pnpm@8.15.9',
-            nodeVersion: { major: 16, range: '16.x', runtime: 'nodejs16.x' },
+            nodeVersion: getNodeVersionByMajor(16),
             packageJsonEngines: { pnpm: '>=9.0.0' },
           });
         }).toThrow(
@@ -112,7 +136,7 @@ describe('Test `getPathOverrideForPackageManager()`', () => {
           cliType: 'pnpm',
           lockfileVersion: 9.0,
           corepackPackageManager: 'pnpm@9.5.0',
-          nodeVersion: { major: 16, range: '16.x', runtime: 'nodejs16.x' },
+          nodeVersion: getNodeVersionByMajor(16),
           packageJsonEngines: { pnpm: '>=9.0.0' },
         });
         expect(result).toStrictEqual({
@@ -129,7 +153,7 @@ describe('Test `getPathOverrideForPackageManager()`', () => {
           getPathOverrideForPackageManager({
             cliType: 'pnpm',
             lockfileVersion: 6.1,
-            nodeVersion: { major: 16, range: '16.x', runtime: 'nodejs16.x' },
+            nodeVersion: getNodeVersionByMajor(16),
             corepackEnabled: false,
             packageJsonEngines: { pnpm: '>=9.0.0' },
             corepackPackageManager: undefined,
@@ -139,12 +163,47 @@ describe('Test `getPathOverrideForPackageManager()`', () => {
         );
       });
 
+      describe('with detected pnpm 10', () => {
+        test('should throw engines error if not using package.json#packageManager', () => {
+          expect(() => {
+            getPathOverrideForPackageManager({
+              cliType: 'pnpm',
+              lockfileVersion: 9.0,
+              nodeVersion: getNodeVersionByMajor(20),
+              corepackEnabled: false,
+              corepackPackageManager: undefined,
+              packageJsonEngines: { pnpm: '9.x' },
+              projectCreatedAt: PNPM_10_PREFERRED_AT.getTime() + 1000,
+            });
+          }).toThrow(
+            'Detected pnpm "10.x" is not compatible with the engines.pnpm "9.x" in your package.json. Either enable corepack with a valid package.json#packageManager value (https://vercel.com/docs/deployments/configure-a-build#corepack) or remove your package.json#engines.pnpm.'
+          );
+        });
+
+        test('should not throw error if using package.json#packageManager', () => {
+          const result = getPathOverrideForPackageManager({
+            cliType: 'pnpm',
+            lockfileVersion: 9.0,
+            nodeVersion: getNodeVersionByMajor(20),
+            corepackEnabled: false,
+            packageJsonEngines: { pnpm: '9.x' },
+            corepackPackageManager: 'pnpm@9.5.0',
+            projectCreatedAt: PNPM_10_PREFERRED_AT.getTime() + 1000,
+          });
+          expect(result).toStrictEqual({
+            detectedLockfile: 'pnpm-lock.yaml',
+            detectedPackageManager: 'pnpm@10.x',
+            path: '/pnpm10/node_modules/.bin',
+            pnpmVersionRange: '10.x',
+          });
+        });
+      });
       test('should warn if detected package manager intersects the engine range', () => {
         const consoleWarnSpy = vi.spyOn(console, 'warn');
         getPathOverrideForPackageManager({
           cliType: 'pnpm',
           lockfileVersion: 9.0,
-          nodeVersion: { major: 16, range: '16.x', runtime: 'nodejs16.x' },
+          nodeVersion: getNodeVersionByMajor(16),
           corepackEnabled: false,
           packageJsonEngines: { pnpm: '>=9.0.0' },
           corepackPackageManager: undefined,
@@ -160,7 +219,7 @@ describe('Test `getPathOverrideForPackageManager()`', () => {
         getPathOverrideForPackageManager({
           cliType: 'pnpm',
           lockfileVersion: 9.0,
-          nodeVersion: { major: 16, range: '16.x', runtime: 'nodejs16.x' },
+          nodeVersion: getNodeVersionByMajor(16),
           corepackEnabled: false,
           packageJsonEngines: { pnpm: '>=9.0.0' },
           corepackPackageManager: undefined,
@@ -190,7 +249,7 @@ describe('Test `getPathOverrideForPackageManager()`', () => {
           cliType: 'pnpm',
           lockfileVersion: 5.0,
           corepackPackageManager: 'pnpm@9.5.0',
-          nodeVersion: { major: 16, range: '16.x', runtime: 'nodejs16.x' },
+          nodeVersion: getNodeVersionByMajor(16),
         });
       }).toThrow(
         'Detected lockfile "5" which is not compatible with the intended corepack package manager "pnpm@9.5.0". Update your lockfile or change to a compatible corepack version.'
@@ -203,7 +262,7 @@ describe('Test `getPathOverrideForPackageManager()`', () => {
           cliType: 'pnpm',
           lockfileVersion: 5.1,
           corepackPackageManager: 'pnpm@8.15.9',
-          nodeVersion: { major: 16, range: '16.x', runtime: 'nodejs16.x' },
+          nodeVersion: getNodeVersionByMajor(16),
         })
       ).toThrow(
         'Detected lockfile "5.1" which is not compatible with the intended corepack package manager "pnpm@8.15.9". Update your lockfile or change to a compatible corepack version.'
@@ -216,7 +275,7 @@ describe('Test `getPathOverrideForPackageManager()`', () => {
           cliType: 'npm',
           lockfileVersion: 9.0,
           corepackPackageManager: 'pnpm@9.5.0',
-          nodeVersion: { major: 16, range: '16.x', runtime: 'nodejs16.x' },
+          nodeVersion: getNodeVersionByMajor(16),
         })
       ).toThrow(
         'Detected package manager "npm" does not match intended corepack defined package manager "pnpm". Change your lockfile or "package.json#packageManager" value to match.'
@@ -229,7 +288,7 @@ describe('Test `getPathOverrideForPackageManager()`', () => {
           cliType: 'pnpm',
           lockfileVersion: 9.0,
           corepackPackageManager: 'pnpm@invalid',
-          nodeVersion: { major: 16, range: '16.x', runtime: 'nodejs16.x' },
+          nodeVersion: getNodeVersionByMajor(16),
         })
       ).toThrow(
         'Intended corepack defined package manager "pnpm@invalid" is not a valid semver value.'
