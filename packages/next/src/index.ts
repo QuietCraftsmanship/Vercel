@@ -31,6 +31,7 @@ import {
   detectPackageManager,
   BUILDER_INSTALLER_STEP,
   BUILDER_COMPILE_STEP,
+  type TriggerEvent,
 } from '@vercel/build-utils';
 import { Route, RouteWithHandle, RouteWithSrc } from '@vercel/routing-utils';
 import {
@@ -1648,7 +1649,6 @@ export const build: BuildV2 = async buildOptions => {
       );
 
       for (const page of mergedPageKeys) {
-        const tracedFiles: { [key: string]: FileFsRef } = {};
         const fileList = parentFilesMap.get(
           path.relative(baseDir, pages[page].fsPath)
         );
@@ -1660,16 +1660,16 @@ export const build: BuildV2 = async buildOptions => {
         }
         const reasons = result.reasons;
 
-        await Promise.all(
-          Array.from(fileList).map(
-            collectTracedFiles(
-              baseDir,
-              lstatResults,
-              lstatSema,
-              reasons,
-              tracedFiles
+        const tracedFiles: {
+          [filePath: string]: FileFsRef;
+        } = Object.fromEntries(
+          (
+            await Promise.all(
+              Array.from(fileList).map(
+                collectTracedFiles(baseDir, lstatResults, lstatSema, reasons)
+              )
             )
-          )
+          ).filter((entry): entry is [string, FileFsRef] => !!entry)
         );
         pageTraces[page] = tracedFiles;
       }
@@ -1961,7 +1961,12 @@ export const build: BuildV2 = async buildOptions => {
               '___next_launcher.cjs'
             )]: new FileBlob({ data: launcher }),
           };
-          let lambdaOptions: { memory?: number; maxDuration?: number } = {};
+          let lambdaOptions: {
+            architecture?: NodejsLambda['architecture'];
+            memory?: number;
+            maxDuration?: number;
+            experimentalTriggers?: TriggerEvent[];
+          } = {};
 
           if (config && config.functions) {
             lambdaOptions = await getLambdaOptionsFromFunction({
@@ -2272,9 +2277,6 @@ export const build: BuildV2 = async buildOptions => {
       canUsePreviewMode,
       isAppPPREnabled: false,
       isAppClientSegmentCacheEnabled: false,
-      // Relevant Next.js versions will be handled by server-build.ts, which
-      // does correctly configure this variable.
-      shouldSkipVaryHeader: false,
     });
 
     await Promise.all(

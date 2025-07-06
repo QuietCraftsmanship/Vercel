@@ -124,6 +124,15 @@ export class TelemetryClient {
     });
   }
 
+  protected trackAgenticUse(agent: string | false) {
+    if (agent) {
+      this.track({
+        key: 'agent',
+        value: agent,
+      });
+    }
+  }
+
   protected trackPlatform() {
     this.track({
       key: 'platform',
@@ -180,6 +189,10 @@ export class TelemetryClient {
       key: 'flag:help',
       value: subcommand ? `${command}:${subcommand}` : command,
     });
+  }
+
+  trackCliFlagFuture(command: 'login') {
+    this.track({ key: 'flag:future', value: command });
   }
 }
 
