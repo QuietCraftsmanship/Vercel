@@ -1,5 +1,4 @@
 import type { BuilderFunctions } from '@vercel/build-utils';
-import type { Readable, Writable } from 'stream';
 import type * as tty from 'tty';
 import type { Route } from '@vercel/routing-utils';
 import type { PROJECT_ENV_TARGET } from '@vercel-internals/constants';
@@ -658,15 +657,13 @@ export interface BuildOutput {
   } | null;
 }
 
-export interface ReadableTTY extends Readable {
+export interface ReadableTTY extends tty.ReadStream {
   isTTY?: boolean;
   isRaw?: boolean;
   setRawMode?: (mode: boolean) => void;
 }
 
-export interface WritableTTY extends Writable {
-  isTTY?: boolean;
-}
+export type WritableTTY = tty.WriteStream;
 
 export interface Stdio {
   stdin: ReadableTTY;
