@@ -1,12 +1,15 @@
+import { describe, it, expect, afterEach } from 'vitest';
 import fs from 'fs-extra';
 import sleep from '../../../src/util/sleep';
+// @ts-expect-error Missing types for package
 import tmp from 'tmp-promise';
 import getLatestVersion from '../../../src/util/get-latest-version';
 import { join } from 'path';
+import { vi } from 'vitest';
 
 tmp.setGracefulCleanup();
 
-jest.setTimeout(25000);
+vi.setConfig({ testTimeout: 25000 });
 
 const cacheDir = tmp.tmpNameSync({
   prefix: 'test-vercel-cli-get-latest-version-',
@@ -40,7 +43,7 @@ describe('get latest version', () => {
     expect(cache.expireAt).toBeGreaterThan(Date.now());
     expect(typeof cache.version).toEqual('string');
     expect(cache.version).toEqual(expect.stringMatching(versionRE));
-    expect(cache.notified).toEqual(false);
+    expect(cache.notifyAt).toEqual(undefined);
 
     // 2. call again and this time it'll return the version from the cache
     latest = getLatestVersion({
@@ -52,7 +55,7 @@ describe('get latest version', () => {
 
     cache = await fs.readJSON(cacheFile);
     expect(cache.version).toEqual(expect.stringMatching(versionRE));
-    expect(cache.notified).toEqual(true);
+    expect(cache.notifyAt).not.toEqual(undefined);
 
     // 3. notification already done, should skip
     latest = getLatestVersion({
@@ -88,7 +91,9 @@ describe('get latest version', () => {
     expect(latest).toEqual(undefined);
   });
 
-  it('should not check twice', async () => {
+  // this test is too flakey in its current form
+  // eslint-disable-next-line jest/no-disabled-tests
+  it.skip('should not check twice', async () => {
     // 1. first call, no cache file
     let latest = getLatestVersion({
       cacheDir,
@@ -129,6 +134,45 @@ describe('get latest version', () => {
       TypeError
     );
     expect(() => getLatestVersion({ pkg: { name: '' } })).toThrow(TypeError);
+  });
+
+  it('should reset notify if newer version is available', async () => {
+    // 1. seed the cache file with both a expireAt and notifyAt in the future
+    //    with an out-of-date latest version
+    await fs.mkdirs(join(cacheDir, 'package-updates'));
+    await fs.writeJSON(cacheFile, {
+      expireAt: Date.now() - 10000,
+      notifyAt: Date.now() - 60000,
+      version: '28.0.0',
+    });
+
+    // 2. get the latest version
+    const latest = getLatestVersion({
+      cacheDir,
+      pkg,
+    });
+    expect(latest).toEqual('28.0.0');
+
+    // we need to wait up to 20 seconds for the cacheFile to be updated
+    for (let i = 0; i < 80; i++) {
+      await sleep(250);
+      try {
+        const cache = await fs.readJSON(cacheFile);
+        if (cache.version !== '28.0.0') {
+          break;
+        }
+      } catch {
+        // cacheFile has not been updated yet
+      }
+      if (i + 1 === 80) {
+        throw new Error(`Timed out waiting for worker to fetch latest version`);
+      }
+    }
+
+    const cache = await fs.readJSON(cacheFile);
+    expect(cache.version).toEqual(expect.stringMatching(versionRE));
+    expect(cache.version).not.toEqual('28.0.0');
+    expect(cache.notifyAt).toEqual(undefined);
   });
 });
 

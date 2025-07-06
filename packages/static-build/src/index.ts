@@ -4,8 +4,13 @@ import fetch from 'node-fetch';
 import getPort from 'get-port';
 import isPortReachable from 'is-port-reachable';
 import frameworks, { Framework } from '@vercel/frameworks';
-import type { ChildProcess, SpawnOptions } from 'child_process';
-import { existsSync, readFileSync, statSync, readdirSync } from 'fs';
+import {
+  spawn,
+  spawnSync,
+  type ChildProcess,
+  type SpawnOptions,
+} from 'child_process';
+import { existsSync, readFileSync, statSync, readdirSync, mkdirSync } from 'fs';
 import { cpus } from 'os';
 import {
   BuildV2,
@@ -15,13 +20,12 @@ import {
   PrepareCache,
   glob,
   download,
-  spawnAsync,
   execCommand,
   spawnCommand,
   runNpmInstall,
   getEnvForPackageManager,
   getPrefixedEnvVars,
-  getNodeBinPath,
+  getNodeBinPaths,
   runBundleInstall,
   runPipInstall,
   runPackageJsonScript,
@@ -32,6 +36,8 @@ import {
   NowBuildError,
   scanParentDirs,
   cloneEnv,
+  getInstalledPackageVersion,
+  defaultCachePathGlob,
 } from '@vercel/build-utils';
 import type { Route, RouteWithSrc } from '@vercel/routing-utils';
 import * as BuildOutputV1 from './utils/build-output-v1';
@@ -45,6 +51,8 @@ import {
   detectFrameworkRecord,
   LocalFileSystemDetector,
 } from '@vercel/fs-detectors';
+import { getHugoUrl } from './utils/hugo';
+import { once } from 'events';
 
 const sleep = (n: number) => new Promise(resolve => setTimeout(resolve, n));
 
@@ -137,7 +145,11 @@ function getCommand(
     return propValue;
   }
 
-  if (pkg) {
+  const ignorePackageJsonScript =
+    name === 'build' &&
+    framework?.settings.buildCommand.ignorePackageJsonScript;
+
+  if (pkg && !ignorePackageJsonScript) {
     const scriptName = getScriptName(pkg, name, config);
 
     if (hasScript(scriptName, pkg)) {
@@ -256,7 +268,12 @@ function getFramework(
   return framework;
 }
 
-async function fetchBinary(url: string, framework: string, version: string) {
+async function fetchBinary(
+  url: string,
+  framework: string,
+  version: string,
+  dest = '/usr/local/bin'
+) {
   const res = await fetch(url);
   if (res.status === 404) {
     throw new NowBuildError({
@@ -265,9 +282,16 @@ async function fetchBinary(url: string, framework: string, version: string) {
       link: 'https://vercel.link/framework-versioning',
     });
   }
-  await spawnAsync(`curl -sSL ${url} | tar -zx -C /usr/local/bin`, [], {
-    shell: true,
+  const cp = spawn('tar', ['-zx', '-C', dest], {
+    stdio: ['pipe', 'ignore', 'ignore'],
   });
+  res.body.pipe(cp.stdin);
+  const [exitCode] = await once(cp, 'exit');
+  if (exitCode !== 0) {
+    throw new Error(
+      `Extraction of ${framework} failed (exit code ${exitCode})`
+    );
+  }
 }
 
 async function getUpdatedDistPath(
@@ -305,6 +329,7 @@ export const build: BuildV2 = async ({
   files,
   entrypoint,
   workPath,
+  repoRootPath,
   config,
   meta = {},
 }) => {
@@ -345,13 +370,19 @@ export const build: BuildV2 = async ({
     if (config.zeroConfig) {
       const { HUGO_VERSION, ZOLA_VERSION, GUTENBERG_VERSION } = process.env;
 
-      if (HUGO_VERSION && !meta.isDev) {
-        console.log('Installing Hugo version ' + HUGO_VERSION);
-        const [major, minor] = HUGO_VERSION.split('.').map(Number);
-        const isOldVersion = major === 0 && minor < 43;
-        const prefix = isOldVersion ? `hugo_` : `hugo_extended_`;
-        const url = `https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/${prefix}${HUGO_VERSION}_Linux-64bit.tar.gz`;
-        await fetchBinary(url, 'Hugo', HUGO_VERSION);
+      if ((HUGO_VERSION || framework?.slug === 'hugo') && !meta.isDev) {
+        const hugoVersion = HUGO_VERSION || '0.58.2';
+        const hugoDir = path.join(
+          workPath,
+          `.vercel/cache/hugo-v${hugoVersion}-${process.platform}-${process.arch}`
+        );
+        if (!existsSync(hugoDir)) {
+          console.log('Installing Hugo version ' + hugoVersion);
+          const url = await getHugoUrl(hugoVersion);
+          mkdirSync(hugoDir, { recursive: true });
+          await fetchBinary(url, 'Hugo', hugoVersion, hugoDir);
+        }
+        process.env.PATH = `${hugoDir}${path.delimiter}${process.env.PATH}`;
       }
 
       if (ZOLA_VERSION && !meta.isDev) {
@@ -388,6 +419,23 @@ export const build: BuildV2 = async ({
         process.env[key] = value;
       }
 
+      const speedInsightsVersion = getInstalledPackageVersion(
+        '@vercel/speed-insights'
+      );
+
+      const isSpeedInsightsInstalled = Boolean(speedInsightsVersion);
+
+      if (
+        isSpeedInsightsInstalled &&
+        process.env.VERCEL_ANALYTICS_ID &&
+        ['next', 'nuxtjs', 'gatsby'].includes(framework.slug || '')
+      ) {
+        delete process.env.VERCEL_ANALYTICS_ID;
+        debug(
+          `Removed VERCEL_ANALYTICS_ID from the environment because we detected the @vercel/speed-insights package`
+        );
+      }
+
       if (framework.slug === 'gatsby') {
         await GatsbyUtils.injectPlugins(detectedVersion, entrypointDir);
       }
@@ -403,7 +451,7 @@ export const build: BuildV2 = async ({
             break;
           default:
             debug(
-              `No analytics plugin injected for framework ${framework.slug}`
+              `No Web Vitals plugin injected for framework ${framework.slug}`
             );
             break;
         }
@@ -435,13 +483,21 @@ export const build: BuildV2 = async ({
       spawnOpts.env.CI = 'false';
     }
 
-    const { cliType, lockfileVersion } = await scanParentDirs(entrypointDir);
+    const {
+      cliType,
+      lockfileVersion,
+      packageJsonPackageManager,
+      turboSupportsCorepackHome,
+    } = await scanParentDirs(entrypointDir, true);
 
     spawnOpts.env = getEnvForPackageManager({
       cliType,
       lockfileVersion,
+      packageJsonPackageManager,
       nodeVersion,
       env: spawnOpts.env || {},
+      turboSupportsCorepackHome,
+      projectCreatedAt: config.projectSettings?.createdAt,
     });
 
     if (meta.isDev) {
@@ -457,7 +513,14 @@ export const build: BuildV2 = async ({
 
       if (!config.zeroConfig) {
         debug('Detected "builds" - not zero config');
-        await runNpmInstall(entrypointDir, [], spawnOpts, meta, nodeVersion);
+        await runNpmInstall(
+          entrypointDir,
+          [],
+          spawnOpts,
+          meta,
+          nodeVersion,
+          config.projectSettings?.createdAt
+        );
         isNpmInstall = true;
       } else if (typeof installCommand === 'string') {
         if (installCommand.trim()) {
@@ -505,7 +568,14 @@ export const build: BuildV2 = async ({
           isPipInstall = true;
         }
         if (pkg) {
-          await runNpmInstall(entrypointDir, [], spawnOpts, meta, nodeVersion);
+          await runNpmInstall(
+            entrypointDir,
+            [],
+            spawnOpts,
+            meta,
+            nodeVersion,
+            config.projectSettings?.createdAt
+          );
           isNpmInstall = true;
         }
       }
@@ -519,10 +589,15 @@ export const build: BuildV2 = async ({
     const pathList = [];
 
     if (isNpmInstall || (pkg && (buildCommand || devCommand))) {
-      const nodeBinPath = await getNodeBinPath({ cwd: entrypointDir });
-      pathList.push(nodeBinPath); // Add `./node_modules/.bin`
+      const nodeBinPaths = getNodeBinPaths({
+        start: entrypointDir,
+        base: repoRootPath,
+      });
+      pathList.push(...nodeBinPaths); // Add `./node_modules/.bin`
       debug(
-        `Added "${nodeBinPath}" to PATH env because a package.json file was found`
+        `Added "${nodeBinPaths.join(
+          path.delimiter
+        )}" to PATH env because a package.json file was found`
       );
     }
 
@@ -531,12 +606,13 @@ export const build: BuildV2 = async ({
       pathList.push(vendorBin); // Add `./vendor/bin`
       debug(`Added "${vendorBin}" to PATH env because a Gemfile was found`);
       const dir = path.join(workPath, 'vendor', 'bundle', 'ruby');
-      const rubyVersion =
-        existsSync(dir) && statSync(dir).isDirectory()
-          ? readdirSync(dir)[0]
-          : '';
-      if (rubyVersion) {
-        gemHome = path.join(dir, rubyVersion); // Add `./vendor/bundle/ruby/2.7.0`
+      const rubyVersion = spawnSync(
+        'ruby',
+        ['-e', 'print "#{ RUBY_VERSION }"'],
+        { encoding: 'utf8' }
+      );
+      if (rubyVersion.status === 0 && typeof rubyVersion.stdout === 'string') {
+        gemHome = path.join(dir, rubyVersion.stdout.trim());
         debug(`Set GEM_HOME="${gemHome}" because a Gemfile was found`);
       }
     }
@@ -643,7 +719,8 @@ export const build: BuildV2 = async ({
             : await runPackageJsonScript(
                 entrypointDir,
                 ['vercel-build', 'now-build', 'build'],
-                spawnOpts
+                spawnOpts,
+                config.projectSettings?.createdAt
               );
 
         if (!found) {
@@ -655,7 +732,7 @@ export const build: BuildV2 = async ({
         }
       } finally {
         if (framework?.slug === 'gatsby') {
-          await GatsbyUtils.cleanupGatsbyFiles(entrypointDir);
+          GatsbyUtils.cleanupGatsbyFiles(entrypointDir);
         }
       }
 
@@ -672,9 +749,8 @@ export const build: BuildV2 = async ({
       // If the Build Command or Framework output files according to the
       // Build Output v3 API, then stop processing here in `static-build`
       // since the output is already in its final form.
-      const buildOutputPathV3 = await BuildOutputV3.getBuildOutputDirectory(
-        outputDirPrefix
-      );
+      const buildOutputPathV3 =
+        await BuildOutputV3.getBuildOutputDirectory(outputDirPrefix);
       if (buildOutputPathV3) {
         // Ensure that `vercel build` is being used for this Deployment
         return BuildOutputV3.createBuildOutput(
@@ -685,9 +761,8 @@ export const build: BuildV2 = async ({
         );
       }
 
-      const buildOutputPathV2 = await BuildOutputV2.getBuildOutputDirectory(
-        outputDirPrefix
-      );
+      const buildOutputPathV2 =
+        await BuildOutputV2.getBuildOutputDirectory(outputDirPrefix);
       if (buildOutputPathV2) {
         return await BuildOutputV2.createBuildOutput(workPath);
       }
@@ -810,7 +885,11 @@ export const prepareCache: PrepareCache = async ({
   // Default cache files
   Object.assign(
     cacheFiles,
-    await glob('**/{.shadow-cljs,node_modules}/**', repoRootPath || workPath)
+    await glob(defaultCachePathGlob, repoRootPath || workPath)
+  );
+  Object.assign(
+    cacheFiles,
+    await glob('**/.shadow-cljs/**', repoRootPath || workPath)
   );
 
   // Framework cache files

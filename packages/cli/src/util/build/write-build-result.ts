@@ -10,28 +10,30 @@ import {
   posix,
 } from 'path';
 import {
-  Builder,
-  BuildResultV2,
-  BuildResultV3,
-  File,
+  type Builder,
+  type BuildResultV2,
+  type BuildResultV3,
+  type File,
+  type Files,
   FileFsRef,
-  BuilderV2,
-  BuilderV3,
-  Lambda,
-  PackageJson,
-  Prerender,
+  type BuilderV2,
+  type BuilderV3,
+  type Lambda,
+  type PackageJson,
+  type Prerender,
   download,
   downloadFile,
-  EdgeFunction,
-  BuildResultBuildOutput,
+  type EdgeFunction,
+  type BuildResultBuildOutput,
   getLambdaOptionsFromFunction,
   normalizePath,
+  type TriggerEvent,
 } from '@vercel/build-utils';
 import pipe from 'promisepipe';
 import { merge } from './merge';
 import { unzip } from './unzip';
 import { VERCEL_DIR } from '../projects/link';
-import { fileNameSymbol, VercelConfig } from '@vercel/client';
+import { fileNameSymbol, type VercelConfig } from '@vercel/client';
 
 const { normalize } = posix;
 export const OUTPUT_DIR = join(VERCEL_DIR, 'output');
@@ -40,11 +42,14 @@ export const OUTPUT_DIR = join(VERCEL_DIR, 'output');
  * An entry in the "functions" object in `vercel.json`.
  */
 interface FunctionConfiguration {
+  architecture?: string;
   memory?: number;
   maxDuration?: number;
+  experimentalTriggers?: TriggerEvent[];
 }
 
 export async function writeBuildResult(
+  repoRootPath: string,
   outputDir: string,
   buildResult: BuildResultV2 | BuildResultV3,
   build: Builder,
@@ -55,6 +60,7 @@ export async function writeBuildResult(
   const { version } = builder;
   if (typeof version !== 'number' || version === 2) {
     return writeBuildResultV2(
+      repoRootPath,
       outputDir,
       buildResult as BuildResultV2,
       build,
@@ -62,6 +68,7 @@ export async function writeBuildResult(
     );
   } else if (version === 3) {
     return writeBuildResultV3(
+      repoRootPath,
       outputDir,
       buildResult as BuildResultV3,
       build,
@@ -107,6 +114,7 @@ function stripDuplicateSlashes(path: string): string {
  * the filesystem.
  */
 async function writeBuildResultV2(
+  repoRootPath: string,
   outputDir: string,
   buildResult: BuildResultV2,
   build: Builder,
@@ -129,12 +137,20 @@ async function writeBuildResultV2(
     );
   }
 
-  const lambdas = new Map<Lambda, string>();
+  const existingFunctions = new Map<Lambda | EdgeFunction, string>();
   const overrides: Record<string, PathOverride> = {};
+
   for (const [path, output] of Object.entries(buildResult.output)) {
     const normalizedPath = stripDuplicateSlashes(path);
     if (isLambda(output)) {
-      await writeLambda(outputDir, output, normalizedPath, undefined, lambdas);
+      await writeLambda(
+        repoRootPath,
+        outputDir,
+        output,
+        normalizedPath,
+        undefined,
+        existingFunctions
+      );
     } else if (isPrerender(output)) {
       if (!output.lambda) {
         throw new Error(
@@ -143,11 +159,12 @@ async function writeBuildResultV2(
       }
 
       await writeLambda(
+        repoRootPath,
         outputDir,
         output.lambda,
         normalizedPath,
         undefined,
-        lambdas
+        existingFunctions
       );
 
       // Write the fallback file alongside the Lambda directory
@@ -156,11 +173,26 @@ async function writeBuildResultV2(
         const ext = getFileExtension(fallback);
         const fallbackName = `${normalizedPath}.prerender-fallback${ext}`;
         const fallbackPath = join(outputDir, 'functions', fallbackName);
-        const stream = fallback.toStream();
-        await pipe(
-          stream,
-          fs.createWriteStream(fallbackPath, { mode: fallback.mode })
-        );
+
+        // if file is already on the disk we can hard link
+        // instead of creating a new copy
+        let usedHardLink = false;
+        if ('fsPath' in fallback) {
+          try {
+            await fs.link(fallback.fsPath, fallbackPath);
+            usedHardLink = true;
+          } catch (_) {
+            // if link fails we continue attempting to copy
+          }
+        }
+
+        if (!usedHardLink) {
+          const stream = fallback.toStream();
+          await pipe(
+            stream,
+            fs.createWriteStream(fallbackPath, { mode: fallback.mode })
+          );
+        }
         fallback = new FileFsRef({
           ...output.fallback,
           fsPath: basename(fallbackName),
@@ -187,7 +219,13 @@ async function writeBuildResultV2(
         vercelConfig?.cleanUrls
       );
     } else if (isEdgeFunction(output)) {
-      await writeEdgeFunction(outputDir, output, normalizedPath);
+      await writeEdgeFunction(
+        repoRootPath,
+        outputDir,
+        output,
+        normalizedPath,
+        existingFunctions
+      );
     } else {
       throw new Error(
         `Unsupported output type: "${
@@ -204,6 +242,7 @@ async function writeBuildResultV2(
  * the filesystem.
  */
 async function writeBuildResultV3(
+  repoRootPath: string,
   outputDir: string,
   buildResult: BuildResultV3,
   build: Builder,
@@ -227,9 +266,15 @@ async function writeBuildResultV3(
     build.config?.zeroConfig ? src.substring(0, src.length - ext.length) : src
   );
   if (isLambda(output)) {
-    await writeLambda(outputDir, output, path, functionConfiguration);
+    await writeLambda(
+      repoRootPath,
+      outputDir,
+      output,
+      path,
+      functionConfiguration
+    );
   } else if (isEdgeFunction(output)) {
-    await writeEdgeFunction(outputDir, output, path);
+    await writeEdgeFunction(repoRootPath, outputDir, output, path);
   } else {
     throw new Error(
       `Unsupported output type: "${(output as any).type}" for ${build.src}`
@@ -288,30 +333,90 @@ async function writeStaticFile(
   const dest = join(outputDir, 'static', fsPath);
   await fs.mkdirp(dirname(dest));
 
+  // if already on disk hard link instead of copying
+  if ('fsPath' in file) {
+    try {
+      return await fs.link(file.fsPath, dest);
+    } catch (_) {
+      // if link fails we continue attempting to copy
+    }
+  }
   await downloadFile(file, dest);
+}
+
+/**
+ * If the `fn` Lambda or Edge function has already been written to
+ * the filesystem at a different location, then create a symlink
+ * to the previous location instead of copying the files again.
+ *
+ * @param outputPath The path of the `.vercel/output` directory
+ * @param dest The path of destination function's `.func` directory
+ * @param fn The Lambda or EdgeFunction instance to create the symlink for
+ * @param existingFunctions Map of `Lambda`/`EdgeFunction` instances that have previously been written
+ */
+async function writeFunctionSymlink(
+  outputDir: string,
+  dest: string,
+  fn: Lambda | EdgeFunction,
+  existingFunctions: Map<Lambda | EdgeFunction, string>
+) {
+  const existingPath = existingFunctions.get(fn);
+
+  // Function has not been written to the filesystem, so bail
+  if (!existingPath) return false;
+
+  const destDir = dirname(dest);
+  const targetDest = join(outputDir, 'functions', `${existingPath}.func`);
+  const target = relative(destDir, targetDest);
+  await fs.mkdirp(destDir);
+  await fs.symlink(target, dest);
+  return true;
 }
 
 /**
  * Serializes the `EdgeFunction` instance to the file system.
  *
+ * @param outputPath The path of the `.vercel/output` directory
  * @param edgeFunction The `EdgeFunction` instance
  * @param path The URL path where the `EdgeFunction` can be accessed from
+ * @param existingFunctions (optional) Map of `Lambda`/`EdgeFunction` instances that have previously been written
  */
 async function writeEdgeFunction(
+  repoRootPath: string,
   outputDir: string,
   edgeFunction: EdgeFunction,
-  path: string
+  path: string,
+  existingFunctions?: Map<Lambda | EdgeFunction, string>
 ) {
   const dest = join(outputDir, 'functions', `${path}.func`);
 
+  if (existingFunctions) {
+    if (
+      await writeFunctionSymlink(
+        outputDir,
+        dest,
+        edgeFunction,
+        existingFunctions
+      )
+    ) {
+      return;
+    }
+    existingFunctions.set(edgeFunction, path);
+  }
+
   await fs.mkdirp(dest);
   const ops: Promise<any>[] = [];
-  ops.push(download(edgeFunction.files, dest));
+  const { files, filePathMap } = filesWithoutFsRefs(
+    edgeFunction.files,
+    repoRootPath
+  );
+  ops.push(download(files, dest));
 
   const config = {
     runtime: 'edge',
     ...edgeFunction,
     entrypoint: normalizePath(edgeFunction.entrypoint),
+    filePathMap,
     files: undefined,
     type: undefined,
   };
@@ -327,42 +432,39 @@ async function writeEdgeFunction(
 /**
  * Writes the file references from the `Lambda` instance to the file system.
  *
+ * @param outputPath The path of the `.vercel/output` directory
  * @param lambda The `Lambda` instance
  * @param path The URL path where the `Lambda` can be accessed from
- * @param lambdas (optional) Map of `Lambda` instances that have previously been written
+ * @param functionConfiguration (optional) Extra configuration to apply to the function's `.vc-config.json` file
+ * @param existingFunctions (optional) Map of `Lambda`/`EdgeFunction` instances that have previously been written
  */
 async function writeLambda(
+  repoRootPath: string,
   outputDir: string,
   lambda: Lambda,
   path: string,
   functionConfiguration?: FunctionConfiguration,
-  lambdas?: Map<Lambda, string>
+  existingFunctions?: Map<Lambda | EdgeFunction, string>
 ) {
   const dest = join(outputDir, 'functions', `${path}.func`);
 
-  // If the `lambda` has already been written to the filesystem at a different
-  // location then create a symlink to the previous location instead of copying
-  // the files again.
-  const existingLambdaPath = lambdas?.get(lambda);
-  if (existingLambdaPath) {
-    const destDir = dirname(dest);
-    const targetDest = join(
-      outputDir,
-      'functions',
-      `${existingLambdaPath}.func`
-    );
-    const target = relative(destDir, targetDest);
-    await fs.mkdirp(destDir);
-    await fs.symlink(target, dest);
-    return;
+  if (existingFunctions) {
+    if (
+      await writeFunctionSymlink(outputDir, dest, lambda, existingFunctions)
+    ) {
+      return;
+    }
+    existingFunctions.set(lambda, path);
   }
-  lambdas?.set(lambda, path);
 
   await fs.mkdirp(dest);
   const ops: Promise<any>[] = [];
+  let filePathMap: Record<string, string> | undefined;
   if (lambda.files) {
     // `files` is defined
-    ops.push(download(lambda.files, dest));
+    const f = filesWithoutFsRefs(lambda.files, repoRootPath);
+    filePathMap = f.filePathMap;
+    ops.push(download(f.files, dest));
   } else if (lambda.zipBuffer) {
     // Builders that use the deprecated `createLambda()` might only have `zipBuffer`
     ops.push(unzip(lambda.zipBuffer, dest));
@@ -370,14 +472,21 @@ async function writeLambda(
     throw new Error('Malformed `Lambda` - no "files" present');
   }
 
+  const architecture =
+    functionConfiguration?.architecture ?? lambda.architecture;
   const memory = functionConfiguration?.memory ?? lambda.memory;
   const maxDuration = functionConfiguration?.maxDuration ?? lambda.maxDuration;
+  const experimentalTriggers =
+    functionConfiguration?.experimentalTriggers ?? lambda.experimentalTriggers;
 
   const config = {
     ...lambda,
     handler: normalizePath(lambda.handler),
+    architecture,
     memory,
     maxDuration,
+    experimentalTriggers,
+    filePathMap,
     type: undefined,
     files: undefined,
     zipBuffer: undefined,
@@ -484,4 +593,28 @@ export async function* findDirs(
       }
     }
   }
+}
+
+/**
+ * Removes the `FileFsRef` instances from the `Files` object
+ * and returns them in a JSON serializable map of repo root
+ * relative paths to Lambda destination paths.
+ */
+export function filesWithoutFsRefs(
+  files: Files,
+  repoRootPath: string
+): { files: Files; filePathMap?: Record<string, string> } {
+  let filePathMap: Record<string, string> | undefined;
+  const out: Files = {};
+  for (const [path, file] of Object.entries(files)) {
+    if (file.type === 'FileFsRef') {
+      if (!filePathMap) filePathMap = {};
+      filePathMap[normalizePath(path)] = normalizePath(
+        relative(repoRootPath, file.fsPath)
+      );
+    } else {
+      out[path] = file;
+    }
+  }
+  return { files: out, filePathMap };
 }

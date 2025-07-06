@@ -1,15 +1,15 @@
 import { join } from 'path';
 import ms from 'ms';
 import fs, { mkdirp } from 'fs-extra';
-
-const {
+import {
+  sleep,
   fetch,
   fixture,
-  sleep,
   testFixture,
   testFixtureStdio,
   validateResponseHeaders,
-} = require('./utils.js');
+} from './utils';
+import assert from 'assert';
 
 test(
   '[vercel dev] temporary directory listing',
@@ -24,6 +24,7 @@ test(
       const firstResponse = await fetch(`http://localhost:${port}`);
       validateResponseHeaders(firstResponse);
       const body = await firstResponse.text();
+      // eslint-disable-next-line no-console
       console.log(body);
       expect(firstResponse.status).toBe(404);
 
@@ -98,8 +99,10 @@ test('[vercel dev] no build matches warning', async () => {
     // start `vercel dev` detached in child_process
     dev.unref();
 
+    assert(dev.stderr);
     dev.stderr.setEncoding('utf8');
     await new Promise<void>(resolve => {
+      assert(dev.stderr);
       dev.stderr.on('data', (str: string) => {
         if (str.includes('did not match any source files')) {
           resolve();
@@ -129,9 +132,11 @@ test('[vercel dev] render warning for empty cwd dir', async () => {
     dev.unref();
 
     // Monitor `stderr` for the warning
+    assert(dev.stderr);
     dev.stderr.setEncoding('utf8');
     const msg = 'There are no files inside your deployment.';
     await new Promise<void>(resolve => {
+      assert(dev.stderr);
       dev.stderr.on('data', (str: string) => {
         if (str.includes(msg)) {
           resolve();
@@ -159,15 +164,17 @@ test('[vercel dev] do not rebuild for changes in the output directory', async ()
   try {
     dev.unref();
 
-    let stderr: any = [];
+    const stderr: any = [];
     const start = Date.now();
 
+    assert(dev.stderr);
     dev.stderr.on('data', (str: any) => stderr.push(str));
 
     while (stderr.join('').includes('Ready') === false) {
       await sleep(ms('3s'));
 
       if (Date.now() - start > ms('30s')) {
+        // eslint-disable-next-line no-console
         console.log('stderr:', stderr.join(''));
         break;
       }
@@ -197,21 +204,18 @@ test(
     await testPath(200, '/sub', 'Sub Index Page');
     await testPath(200, '/sub/another', 'Sub Another Page');
     await testPath(200, '/style.css', 'body { color: green }');
-    await testPath(308, '/index.html', 'Redirecting to / (308)', {
+    await testPath(308, '/index.html', 'Redirecting...', {
       Location: '/',
     });
-    await testPath(308, '/about.html', 'Redirecting to /about (308)', {
+    await testPath(308, '/about.html', 'Redirecting...', {
       Location: '/about',
     });
-    await testPath(308, '/sub/index.html', 'Redirecting to /sub (308)', {
+    await testPath(308, '/sub/index.html', 'Redirecting...', {
       Location: '/sub',
     });
-    await testPath(
-      308,
-      '/sub/another.html',
-      'Redirecting to /sub/another (308)',
-      { Location: '/sub/another' }
-    );
+    await testPath(308, '/sub/another.html', 'Redirecting...', {
+      Location: '/sub/another',
+    });
   })
 );
 
@@ -225,21 +229,18 @@ test(
       await testPath(200, '/sub', 'Sub Index Page');
       await testPath(200, '/sub/another', 'Sub Another Page');
       await testPath(200, '/style.css', 'body { color: green }');
-      await testPath(308, '/index.html', 'Redirecting to / (308)', {
+      await testPath(308, '/index.html', 'Redirecting...', {
         Location: '/',
       });
-      await testPath(308, '/about.html', 'Redirecting to /about (308)', {
+      await testPath(308, '/about.html', 'Redirecting...', {
         Location: '/about',
       });
-      await testPath(308, '/sub/index.html', 'Redirecting to /sub (308)', {
+      await testPath(308, '/sub/index.html', 'Redirecting...', {
         Location: '/sub',
       });
-      await testPath(
-        308,
-        '/sub/another.html',
-        'Redirecting to /sub/another (308)',
-        { Location: '/sub/another' }
-      );
+      await testPath(308, '/sub/another.html', 'Redirecting...', {
+        Location: '/sub/another',
+      });
     }
   )
 );
@@ -264,21 +265,16 @@ test(
     await testPath(200, '/sub/another/', 'Sub Another Page');
     await testPath(200, '/style.css', 'body { color: green }');
     //TODO: fix this test so that location is `/` instead of `//`
-    //await testPath(308, '/index.html', 'Redirecting to / (308)', { Location: '/' });
-    await testPath(308, '/about.html', 'Redirecting to /about/ (308)', {
+    //await testPath(308, '/index.html', 'Redirecting...', { Location: '/' });
+    await testPath(308, '/about.html', 'Redirecting...', {
       Location: '/about/',
     });
-    await testPath(308, '/sub/index.html', 'Redirecting to /sub/ (308)', {
+    await testPath(308, '/sub/index.html', 'Redirecting...', {
       Location: '/sub/',
     });
-    await testPath(
-      308,
-      '/sub/another.html',
-      'Redirecting to /sub/another/ (308)',
-      {
-        Location: '/sub/another/',
-      }
-    );
+    await testPath(308, '/sub/another.html', 'Redirecting...', {
+      Location: '/sub/another/',
+    });
   })
 );
 
@@ -315,13 +311,13 @@ test(
     await testPath(200, '/sub/index.html', 'Sub Index Page');
     await testPath(200, '/sub/another.html', 'Sub Another Page');
     await testPath(200, '/style.css', 'body { color: green }');
-    await testPath(308, '/about.html/', 'Redirecting to /about.html (308)', {
+    await testPath(308, '/about.html/', 'Redirecting...', {
       Location: '/about.html',
     });
-    await testPath(308, '/style.css/', 'Redirecting to /style.css (308)', {
+    await testPath(308, '/style.css/', 'Redirecting...', {
       Location: '/style.css',
     });
-    await testPath(308, '/sub', 'Redirecting to /sub/ (308)', {
+    await testPath(308, '/sub', 'Redirecting...', {
       Location: '/sub/',
     });
   })
@@ -347,20 +343,15 @@ test(
     await testPath(200, '/sub/index.html', 'Sub Index Page');
     await testPath(200, '/sub/another.html', 'Sub Another Page');
     await testPath(200, '/style.css', 'body { color: green }');
-    await testPath(308, '/about.html/', 'Redirecting to /about.html (308)', {
+    await testPath(308, '/about.html/', 'Redirecting...', {
       Location: '/about.html',
     });
-    await testPath(308, '/sub/', 'Redirecting to /sub (308)', {
+    await testPath(308, '/sub/', 'Redirecting...', {
       Location: '/sub',
     });
-    await testPath(
-      308,
-      '/sub/another.html/',
-      'Redirecting to /sub/another.html (308)',
-      {
-        Location: '/sub/another.html',
-      }
-    );
+    await testPath(308, '/sub/another.html/', 'Redirecting...', {
+      Location: '/sub/another.html',
+    });
   })
 );
 
@@ -386,18 +377,16 @@ test(
   })
 );
 
+// n.b. this test requires the project 00-list-directory to have directory listing
+// enabled at 00-list-directory/settings/advanced
 test(
   '[vercel dev] 00-list-directory',
-  testFixtureStdio(
-    '00-list-directory',
-    async (testPath: any) => {
-      await testPath(200, '/', /Files within/m);
-      await testPath(200, '/', /test[0-3]\.txt/m);
-      await testPath(200, '/', /\.well-known/m);
-      await testPath(200, '/.well-known/keybase.txt', 'proof goes here');
-    },
-    { projectSettings: { directoryListing: true } }
-  )
+  testFixtureStdio('00-list-directory', async (testPath: any) => {
+    await testPath(200, '/', /Files within/m);
+    await testPath(200, '/', /test[0-3]\.txt/m);
+    await testPath(200, '/', /\.well-known/m);
+    await testPath(200, '/.well-known/keybase.txt', 'proof goes here');
+  })
 );
 
 test(
@@ -447,3 +436,131 @@ test(
     }
   })
 );
+
+describe('[vercel dev] ESM edge functions', () => {
+  test(
+    '[vercel dev] ESM .js type=module',
+    testFixtureStdio(
+      'esm-js-edge-module',
+      async (_testPath: any, port: any) => {
+        const res = await fetch(`http://localhost:${port}/api/data`);
+        validateResponseHeaders(res);
+        const json = await res.json();
+        expect(json).toHaveProperty('isLeapYear');
+      },
+      { skipDeploy: true }
+    )
+  );
+
+  test(
+    '[vercel dev] ESM .ts type=module',
+    testFixtureStdio(
+      'esm-ts-edge-module',
+      async (_testPath: any, port: any) => {
+        const res = await fetch(`http://localhost:${port}/api/data`);
+        validateResponseHeaders(res);
+        const json = await res.json();
+        expect(json).toHaveProperty('isLeapYear');
+      },
+      { skipDeploy: true }
+    )
+  );
+
+  test(
+    '[vercel dev] ESM .js type=commonjs',
+    testFixtureStdio(
+      'esm-js-edge-no-module',
+      async (_testPath: any, port: any) => {
+        const res = await fetch(`http://localhost:${port}/api/data`);
+        validateResponseHeaders(res);
+        const json = await res.json();
+        expect(json).toHaveProperty('isLeapYear');
+      },
+      { skipDeploy: true }
+    )
+  );
+
+  test(
+    '[vercel dev] ESM .ts type=commonjs',
+    testFixtureStdio(
+      'esm-ts-edge-no-module',
+      async (_testPath: any, port: any) => {
+        const res = await fetch(`http://localhost:${port}/api/data`);
+        validateResponseHeaders(res);
+        const json = await res.json();
+        expect(json).toHaveProperty('isLeapYear');
+      },
+      { skipDeploy: true }
+    )
+  );
+});
+
+describe('[vercel dev] ESM serverless functions', () => {
+  test(
+    '[vercel dev] ESM .js type=module',
+    testFixtureStdio(
+      'esm-js-nodejs-module',
+      async (_testPath: any, port: any) => {
+        const res = await fetch(`http://localhost:${port}/api/data`);
+        validateResponseHeaders(res);
+        const json = await res.json();
+        expect(json).toHaveProperty('isLeapYear');
+      },
+      { skipDeploy: true }
+    )
+  );
+
+  test(
+    '[vercel dev] ESM .ts type=module',
+    testFixtureStdio(
+      'esm-ts-nodejs-module',
+      async (_testPath: any, port: any) => {
+        const res = await fetch(`http://localhost:${port}/api/data`);
+        validateResponseHeaders(res);
+        const json = await res.json();
+        expect(json).toHaveProperty('isLeapYear');
+      },
+      { skipDeploy: true }
+    )
+  );
+
+  test(
+    '[vercel dev] ESM .js type=commonjs',
+    testFixtureStdio(
+      'esm-js-nodejs-no-module',
+      async (testPath: any) => {
+        // bad gateway
+        // require() of ESM Module
+        await testPath(500, '/api/data');
+      },
+      { skipDeploy: true }
+    )
+  );
+
+  test(
+    '[vercel dev] ESM .ts type=commonjs',
+    testFixtureStdio(
+      'esm-ts-nodejs-no-module',
+      async (testPath: any) => {
+        // bad gateway
+        // require() of ESM Module
+        await testPath(500, '/api/data');
+      },
+      { skipDeploy: true }
+    )
+  );
+
+  test(
+    '[vercel dev] TypeScript importing another TS file, type=commonjs',
+    testFixtureStdio(
+      'vercel-ts-test',
+      async (_testPath: any, port: number) => {
+        const res = await fetch(`http://localhost:${port}/api/test`);
+        validateResponseHeaders(res);
+        const text = await res.text();
+        expect(text).toEqual('Hello, Batman!');
+      },
+      { skipDeploy: true }
+    )
+  );
+});

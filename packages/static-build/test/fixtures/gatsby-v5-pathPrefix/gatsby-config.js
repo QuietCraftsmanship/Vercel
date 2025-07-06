@@ -3,9 +3,9 @@
  */
 module.exports = {
   siteMetadata: {
-    title: `gatsby-v5`,
-    siteUrl: `https://www.yourdomain.tld`,
+    title: `gatsby-v5-pathPrefix`,
   },
   plugins: [],
   pathPrefix: '/foo',
+  assetPrefix: 'https://example.com',
 };

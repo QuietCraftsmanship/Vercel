@@ -4,12 +4,14 @@ import { packageManagers } from '../package-managers/package-managers';
 import { DetectorFilesystem } from '../detectors/filesystem';
 import { detectFramework } from '../detect-framework';
 import JSON5 from 'json5';
+import semver from 'semver';
 
 export class MissingBuildPipeline extends Error {
-  constructor() {
-    super(
-      'Missing required `build` pipeline in turbo.json or package.json Turbo configuration.'
-    );
+  constructor(usesTasks: boolean) {
+    const message = usesTasks
+      ? 'Missing required `build` task in turbo.json.'
+      : 'Missing required `build` pipeline in turbo.json or package.json Turbo configuration.';
+    super(message);
   }
 }
 
@@ -19,6 +21,18 @@ export class MissingBuildTarget extends Error {
       'Missing required `build` target in either nx.json, project.json, or package.json Nx configuration.'
     );
   }
+}
+
+function supportsRootCommand(turboSemVer: string | undefined) {
+  if (!turboSemVer) {
+    return false;
+  }
+
+  if (!semver.validRange(turboSemVer)) {
+    return false;
+  }
+
+  return !semver.intersects(turboSemVer, '<1.8.0');
 }
 
 type MonorepoDefaultSettings = {
@@ -52,45 +66,64 @@ export async function getMonorepoDefaultSettings(
     ]);
 
     let hasBuildPipeline = false;
+    let hasTurboTasks = false;
+    let turboSemVer = null;
 
     if (turboJSONBuf !== null) {
       const turboJSON = JSON5.parse(turboJSONBuf.toString('utf-8'));
 
-      if (turboJSON?.pipeline?.build) {
+      hasTurboTasks = 'tasks' in (turboJSON || {});
+
+      if (turboJSON?.pipeline?.build || turboJSON?.tasks?.build) {
         hasBuildPipeline = true;
       }
-    } else if (packageJSONBuf !== null) {
+    }
+
+    if (packageJSONBuf !== null) {
       const packageJSON = JSON.parse(packageJSONBuf.toString('utf-8'));
 
       if (packageJSON?.turbo?.pipeline?.build) {
         hasBuildPipeline = true;
       }
+
+      turboSemVer =
+        packageJSON?.dependencies?.turbo ||
+        packageJSON?.devDependencies?.turbo ||
+        null;
     }
 
     if (!hasBuildPipeline) {
-      throw new MissingBuildPipeline();
+      throw new MissingBuildPipeline(hasTurboTasks);
     }
 
     if (projectPath === '/') {
       return {
         monorepoManager: 'turbo',
-        buildCommand: 'npx turbo run build',
+        buildCommand: 'turbo run build',
         installCommand: packageManager ? `${packageManager} install` : null,
         commandForIgnoringBuildStep: 'npx turbo-ignore',
       };
     }
 
+    let buildCommand = null;
+    if (projectPath) {
+      if (supportsRootCommand(turboSemVer)) {
+        buildCommand = `turbo run build`;
+      } else {
+        // We don't know for sure if the local `turbo` supports inference.
+        buildCommand = `cd ${relativeToRoot} && turbo run build --filter={${projectPath}}...`;
+      }
+    }
+
     return {
       monorepoManager: 'turbo',
-      buildCommand: projectPath
-        ? `cd ${relativeToRoot} && npx turbo run build --filter={${projectPath}}...`
-        : null,
+      buildCommand,
       installCommand:
         packageManager === 'npm'
           ? `${packageManager} install --prefix=${relativeToRoot}`
           : packageManager
-          ? `${packageManager} install`
-          : null,
+            ? `${packageManager} install`
+            : null,
       commandForIgnoringBuildStep: 'npx turbo-ignore',
     };
   } else if (monorepoManager === 'nx') {
@@ -147,8 +180,8 @@ export async function getMonorepoDefaultSettings(
         packageManager === 'npm'
           ? `${packageManager} install --prefix=${relativeToRoot}`
           : packageManager
-          ? `${packageManager} install`
-          : null,
+            ? `${packageManager} install`
+            : null,
     };
   }
   // TODO (@Ethan-Arrowood) - Revisit rush support when we can test it better

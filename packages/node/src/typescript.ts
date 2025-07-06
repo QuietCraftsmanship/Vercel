@@ -1,5 +1,6 @@
-import { NowBuildError } from '@vercel/build-utils';
+import { createRequire } from 'module';
 import { relative, basename, dirname } from 'path';
+import { NowBuildError } from '@vercel/build-utils';
 import type _ts from 'typescript';
 
 /*
@@ -113,6 +114,8 @@ function cachedLookup<T>(fn: (arg: string) => T): (arg: string) => T {
   };
 }
 
+const require_ = createRequire(__filename);
+
 /**
  * Maps the config path to a build func
  */
@@ -134,7 +137,6 @@ export function register(opts: Options = {}): Register {
   // Require the TypeScript compiler and configuration.
   const cwd = options.basePath || process.cwd();
   let compiler: string;
-  const require_ = eval('require');
   try {
     compiler = require_.resolve(options.compiler || 'typescript', {
       paths: [options.project || cwd],
@@ -166,11 +168,6 @@ export function register(opts: Options = {}): Register {
     getCanonicalFileName: path => path,
   };
 
-  function createTSError(diagnostics: ReadonlyArray<_ts.Diagnostic>) {
-    const message = formatDiagnostics(diagnostics, diagnosticHost);
-    return new NowBuildError({ code: 'NODE_TYPESCRIPT_ERROR', message });
-  }
-
   function reportTSError(
     diagnostics: _ts.Diagnostic[],
     shouldExit: boolean | undefined
@@ -178,13 +175,13 @@ export function register(opts: Options = {}): Register {
     if (!diagnostics || diagnostics.length === 0) {
       return;
     }
-    const error = createTSError(diagnostics);
+    const message = formatDiagnostics(diagnostics, diagnosticHost);
 
     if (shouldExit) {
-      throw error;
+      throw new NowBuildError({ code: 'NODE_TYPESCRIPT_ERROR', message });
     } else {
       // Print error in red color and continue execution.
-      console.error('\x1b[31m%s\x1b[0m', error);
+      console.error(message);
     }
   }
 

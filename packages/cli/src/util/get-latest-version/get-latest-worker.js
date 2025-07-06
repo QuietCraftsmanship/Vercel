@@ -10,8 +10,8 @@
  * the world, but something to be aware of.
  *
  * IMPORTANT! This file must NOT depend on any 3rd party dependencies. This
- * file is NOT bundled by `ncc` and thus any 3rd party dependencies will never
- * be available.
+ * file is NOT bundled by `esbuild` and thus any 3rd party dependencies will
+ * never be available.
  */
 
 const https = require('https');
@@ -22,7 +22,7 @@ const { format, inspect } = require('util');
 
 /**
  * An simple output helper which accumulates error and debug log messages in
- * memory for potential persistance to disk while immediately outputting errors
+ * memory for potential persistence to disk while immediately outputting errors
  * and debug messages, when the `--debug` flag is set, to `stderr`.
  */
 class WorkerOutput {
@@ -49,8 +49,10 @@ class WorkerOutput {
     );
     this.debugLog.push(`[${new Date().toISOString()}] [${type}] ${str}`);
     if (type === 'debug' && this.debugOutputEnabled) {
+      // eslint-disable-next-line no-console
       console.error(`> '[debug] [${new Date().toISOString()}] ${str}`);
     } else if (type === 'error') {
+      // eslint-disable-next-line no-console
       console.error(`Error: ${str}`);
     }
   }
@@ -116,45 +118,10 @@ process.once('message', async msg => {
     output.debug(`Initializing lock file with pid ${process.pid}`);
     await writeFile(lockFile, String(process.pid), 'utf-8');
 
-    // fetch the latest version from npm
-    const agent = new https.Agent({
-      keepAlive: true,
-      maxSockets: 15, // See: `npm config get maxsockets`
-    });
-    const headers = {
-      accept:
-        'application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*',
-    };
-    const url = `https://registry.npmjs.org/-/package/${name}/dist-tags`;
-    output.debug(`Fetching ${url}`);
-
-    const tags = await new Promise((resolve, reject) => {
-      const req = https.get(
-        url,
-        {
-          agent,
-          headers,
-        },
-        res => {
-          let buf = '';
-          res.on('data', chunk => {
-            buf += chunk;
-          });
-          res.on('end', () => {
-            try {
-              resolve(JSON.parse(buf));
-            } catch (err) {
-              reject(err);
-            }
-          });
-        }
-      );
-
-      req.on('error', reject);
-      req.end();
-    });
-
+    const tags = await fetchDistTags(name);
     const version = tags[distTag];
+    const expireAt = Date.now() + updateCheckInterval;
+    const notifyAt = await getNotifyAt(cacheFile, version);
 
     if (version) {
       output.debug(`Found dist tag "${distTag}" with version "${version}"`);
@@ -167,8 +134,8 @@ process.once('message', async msg => {
     await writeFile(
       cacheFile,
       JSON.stringify({
-        expireAt: Date.now() + updateCheckInterval,
-        notified: false,
+        expireAt,
+        notifyAt,
         version,
       })
     );
@@ -194,6 +161,7 @@ if (process.connected) {
   output.debug("Notifying parent we're ready");
   process.send({ type: 'ready' });
 } else {
+  // eslint-disable-next-line no-console
   console.error('No IPC bridge detected, exiting');
   process.exit(1);
 }
@@ -222,4 +190,83 @@ async function isRunning(lockFile) {
     }
     return false;
   }
+}
+
+/**
+ * Attempts to load and return the previous `notifyAt` value.
+ *
+ * If the latest version is newer than the previous latest version, then
+ * return `undefined` to invalidate `notifyAt` which forces the notification
+ * to be displayed, otherwise keep the existing `notifyAt`.
+ *
+ * @param {string} cacheFile The path to the cache file
+ * @param {string} version The latest version
+ * @returns {number | undefined} The previous notifyAt
+ */
+async function getNotifyAt(cacheFile, version) {
+  try {
+    const old = JSON.parse(await readFile(cacheFile, 'utf-8'));
+    if (old?.version && old.version === version) {
+      return old.notifyAt;
+    }
+  } catch (err) {
+    // cache does not exist or malformed
+    if (err.code !== 'ENOENT') {
+      output.debug(`Error reading latest package cache file: ${err}`);
+    }
+  }
+}
+
+/**
+ * Fetches the dist tags from npm for a given package.
+ *
+ * @param {string} name The package name
+ * @returns A map of dist tags to versions
+ */
+async function fetchDistTags(name) {
+  // fetch the latest version from npm
+  const agent = new https.Agent({
+    keepAlive: true,
+    maxSockets: 15, // See: `npm config get maxsockets`
+  });
+  const headers = {
+    accept:
+      'application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*',
+  };
+  const url = `https://registry.npmjs.org/-/package/${name}/dist-tags`;
+  output.debug(`Fetching ${url}`);
+
+  return new Promise((resolve, reject) => {
+    const req = https.get(
+      url,
+      {
+        agent,
+        headers,
+      },
+      res => {
+        let buf = '';
+        res.on('data', chunk => {
+          buf += chunk;
+        });
+        res.on('end', () => {
+          try {
+            if (res.statusCode && res.statusCode >= 400) {
+              return reject(
+                new Error(
+                  `Fetch dist-tags failed ${res.statusCode} ${res.statusMessage}`
+                )
+              );
+            }
+
+            resolve(JSON.parse(buf));
+          } catch (err) {
+            reject(err);
+          }
+        });
+      }
+    );
+
+    req.on('error', reject);
+    req.end();
+  });
 }

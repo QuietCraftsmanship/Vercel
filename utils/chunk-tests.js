@@ -1,13 +1,91 @@
+// @ts-check
 const child_process = require('child_process');
 const path = require('path');
 
-const NUMBER_OF_CHUNKS = 5;
-const MINIMUM_PER_CHUNK = 1;
 const runnersMap = new Map([
-  ['test-integration-once', ['ubuntu-latest']],
-  ['test-next-local', ['ubuntu-latest']],
-  ['test-integration-dev', ['ubuntu-latest', 'macos-latest']],
+  [
+    'vitest-unit',
+    {
+      min: 1,
+      max: 2,
+      testScript: 'vitest-run',
+      runners: ['ubuntu-latest', 'macos-14', 'windows-latest'],
+      nodeVersions: ['18', '20', '22'],
+    },
+  ],
+  [
+    'vitest-e2e',
+    {
+      min: 1,
+      max: 7,
+      testScript: 'vitest-run',
+      runners: ['ubuntu-latest'],
+    },
+  ],
+  [
+    'vitest-e2e-node-20',
+    {
+      min: 1,
+      max: 7,
+      testScript: 'vitest-run',
+      runners: ['ubuntu-latest'],
+      nodeVersions: ['20'],
+    },
+  ],
+  [
+    'test-unit',
+    {
+      min: 1,
+      max: 1,
+      testScript: 'test',
+      runners: ['ubuntu-latest', 'macos-14', 'windows-latest'],
+    },
+  ],
+  [
+    'test-e2e',
+    { min: 1, max: 7, testScript: 'test', runners: ['ubuntu-latest'] },
+  ],
+  [
+    'test-next-local',
+    {
+      min: 1,
+      max: 5,
+      runners: ['ubuntu-latest'],
+      testScript: 'test',
+      nodeVersions: ['18'],
+    },
+  ],
+  [
+    'test-dev',
+    {
+      min: 1,
+      max: 7,
+      testScript: 'test',
+      runners: ['ubuntu-latest', 'macos-14'],
+    },
+  ],
 ]);
+
+const packageOptionsOverrides = {
+  // 'some-package': { min: 1, max: 1 },
+};
+
+function getRunnerOptions(scriptName, packageName) {
+  let runnerOptions = runnersMap.get(scriptName);
+  if (packageOptionsOverrides[packageName]) {
+    runnerOptions = Object.assign(
+      {},
+      runnerOptions,
+      packageOptionsOverrides[packageName]
+    );
+  }
+  if (!runnerOptions) {
+    throw new Error(
+      `Unable to find runner options for package "${packageName}" and script ${scriptName}`
+    );
+  }
+  return runnerOptions;
+}
 
 async function getChunkedTests() {
   const scripts = [...runnersMap.keys()];
@@ -19,6 +97,7 @@ async function getChunkedTests() {
       ...scripts,
       `--cache-dir=.turbo`,
       '--output-logs=full',
+      '--log-order=stream',
       '--',
       '--', // need two of these due to pnpm arg parsing
       '--listTests',
@@ -60,26 +139,37 @@ async function getChunkedTests() {
     ([packagePathAndName, scriptNames]) => {
       const [packagePath, packageName] = packagePathAndName.split(',');
       return Object.entries(scriptNames).flatMap(([scriptName, testPaths]) => {
-        const sortedTestPaths = testPaths.sort((a, b) => a.localeCompare(b));
-        return intoChunks(NUMBER_OF_CHUNKS, sortedTestPaths).flatMap(
-          (chunk, chunkNumber, allChunks) => {
-            const runners = runnersMap.get(scriptName) || ['ubuntu-latest'];
+        const runnerOptions = getRunnerOptions(scriptName, packageName);
+        const {
+          runners,
+          min,
+          max,
+          testScript,
+          nodeVersions = ['18'],
+        } = runnerOptions;
 
-            return runners.map(runner => {
-              return {
-                runner,
-                packagePath,
-                packageName,
-                scriptName,
-                testPaths: chunk.map(testFile =>
-                  path.relative(
-                    path.join(__dirname, '../', packagePath),
-                    testFile
-                  )
-                ),
-                chunkNumber: chunkNumber + 1,
-                allChunksLength: allChunks.length,
-              };
+        const sortedTestPaths = testPaths.sort((a, b) => a.localeCompare(b));
+        return intoChunks(min, max, sortedTestPaths).flatMap(
+          (chunk, chunkNumber, allChunks) => {
+            return nodeVersions.flatMap(nodeVersion => {
+              return runners.map(runner => {
+                return {
+                  runner,
+                  packagePath,
+                  packageName,
+                  scriptName,
+                  testScript,
+                  nodeVersion,
+                  testPaths: chunk.map(testFile =>
+                    path.relative(
+                      path.join(__dirname, '../', packagePath),
+                      testFile
+                    )
+                  ),
+                  chunkNumber: chunkNumber + 1,
+                  allChunksLength: allChunks.length,
+                };
+              });
             });
           }
         );
@@ -115,7 +205,7 @@ async function turbo(args) {
         if (code !== 0) {
           reject(new Error(`Turbo exited with code ${code}`));
         } else {
-          resolve();
+          resolve(code);
         }
       });
     });
@@ -128,19 +218,26 @@ async function turbo(args) {
 
 /**
  * @template T
- * @param {number} totalChunks maximum number of chunks
- * @param {T[]} values
+ * @param {number} minChunks minimum number of chunks
+ * @param {number} maxChunks maximum number of chunks
+ * @param {T[]} arr
  * @returns {T[][]}
  */
-function intoChunks(totalChunks, arr) {
-  const chunkSize = Math.max(
-    MINIMUM_PER_CHUNK,
-    Math.ceil(arr.length / totalChunks)
-  );
+function intoChunks(minChunks, maxChunks, arr) {
+  const chunkSize = Math.max(minChunks, Math.ceil(arr.length / maxChunks));
   const chunks = [];
-  for (let i = 0; i < totalChunks; i++) {
+  for (let i = 0; i < maxChunks; i++) {
     chunks.push(arr.slice(i * chunkSize, (i + 1) * chunkSize));
   }
+
+  const indexOfTest = chunks[0].findIndex(
+    file => typeof file === 'string' && file.endsWith('index2.test.ts')
+  );
+  if (indexOfTest >= 0) {
+    const index2Test = chunks[0].splice(indexOfTest, 1);
+    chunks[1].push(index2Test[0]);
+  }
+
   return chunks.filter(x => x.length > 0);
 }
 
@@ -155,11 +252,11 @@ async function main() {
   }
 }
 
+// @ts-ignore
 if (module === require.main || !module.parent) {
   main();
 }
 
 module.exports = {
   intoChunks,
-  NUMBER_OF_CHUNKS,
 };

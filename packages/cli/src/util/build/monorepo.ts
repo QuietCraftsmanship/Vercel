@@ -5,16 +5,16 @@ import {
   MissingBuildPipeline,
   MissingBuildTarget,
 } from '@vercel/fs-detectors';
-import { ProjectLinkAndSettings } from '../projects/project-settings';
-import { Output } from '../output';
+import type { ProjectLinkAndSettings } from '../projects/project-settings';
 import title from 'title';
-import { PartialProjectSettings } from '../input/edit-project-settings';
+import type { PartialProjectSettings } from '../input/edit-project-settings';
+import { debug } from '@vercel/build-utils';
+import output from '../../output-manager';
 
 export async function setMonorepoDefaultSettings(
   cwd: string,
   workPath: string,
-  projectSettings: ProjectLinkAndSettings['settings'] & PartialProjectSettings,
-  output: Output
+  projectSettings: ProjectLinkAndSettings['settings'] & PartialProjectSettings
 ) {
   const localFileSystem = new LocalFileSystemDetector(cwd);
 
@@ -26,8 +26,8 @@ export async function setMonorepoDefaultSettings(
     value: string
   ) => {
     if (projectSettings[command]) {
-      output.warn(
-        `Cannot automatically assign ${command} as it is already set via project settings or configuration overrides.`
+      debug(
+        `Skipping auto-assignment of ${command} as it is already set via project settings or configuration overrides.`
       );
     } else {
       projectSettings[command] = value;
@@ -49,9 +49,7 @@ export async function setMonorepoDefaultSettings(
     const { monorepoManager, ...commands } = result;
 
     output.log(
-      `Automatically detected ${title(
-        monorepoManager
-      )} monorepo manager. Attempting to assign default settings.`
+      `Detected ${title(monorepoManager)}. Adjusting default settings...`
     );
 
     if (commands.buildCommand) {

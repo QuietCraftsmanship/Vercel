@@ -1,12 +1,13 @@
 import path from 'path';
+import { LocalFileSystemDetector } from '../src';
 import { detectFramework } from '../src/detect-framework';
 import monorepoManagers from '../src/monorepos/monorepo-managers';
-import { FixtureFilesystem } from './utils/fixture-filesystem';
 
 describe('monorepo-managers', () => {
   describe.each([
     ['28-turborepo-with-yarn-workspaces', 'turbo'],
     ['31-turborepo-in-package-json', 'turbo'],
+    ['61-turborepo-with-turbo-jsonc', 'turbo'],
     ['22-pnpm', null],
     ['39-nx-monorepo', 'nx'],
     ['40-rush-monorepo', 'rush'],
@@ -17,7 +18,7 @@ describe('monorepo-managers', () => {
 
     it(testName, async () => {
       const fixture = path.join(__dirname, 'fixtures', fixturePath);
-      const fs = new FixtureFilesystem(fixture);
+      const fs = new LocalFileSystemDetector(fixture);
 
       const result = await detectFramework({
         fs,
