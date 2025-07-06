@@ -1,5 +1,5 @@
 import { join } from 'path';
-import { promises } from 'fs';
+import { existsSync, promises } from 'fs';
 
 import { Framework } from './types';
 import { readConfigFile } from './read-config-file';
@@ -42,7 +42,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `blitz build`',
@@ -65,7 +66,7 @@ export const frameworks = [
     darkModeLogo:
       'https://api-frameworks.vercel.sh/framework-logos/next-dark.svg',
     screenshot:
-      'https://assets.vercel.com/image/upload/v1673027027/front/import/nextjs.png',
+      'https://assets.vercel.com/image/upload/v1701461207/front/import/nextjs.png',
     tagline:
       'Next.js makes you productive with React instantly — whether you want to build static or dynamic sites.',
     description: 'A Next.js app and a Serverless Function API.',
@@ -82,7 +83,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `next build`',
@@ -125,7 +127,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `gatsby build`',
@@ -199,10 +202,14 @@ export const frameworks = [
     description: 'A new Remix app — the result of running `npx create-remix`.',
     website: 'https://remix.run',
     sort: 6,
+    supersedes: ['hydrogen', 'vite'],
     useRuntime: { src: 'package.json', use: '@vercel/remix-builder' },
     ignoreRuntimes: ['@vercel/node'],
     detectors: {
       some: [
+        {
+          matchPackage: '@remix-run/dev',
+        },
         {
           path: 'remix.config.js',
         },
@@ -213,7 +220,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         value: 'remix build',
@@ -229,6 +237,58 @@ export const frameworks = [
     },
     dependency: 'remix',
     getOutputDirName: async () => 'public',
+  },
+  {
+    name: 'React Router',
+    slug: 'react-router',
+    demo: 'https://react-router-v7-template.vercel.app',
+    logo: 'https://api-frameworks.vercel.sh/framework-logos/react-router.svg',
+    darkModeLogo:
+      'https://api-frameworks.vercel.sh/framework-logos/react-router-dark.svg',
+    tagline: 'Declarative routing for React',
+    description:
+      'A user-obsessed, standards-focused, multi-strategy router you can deploy anywhere.',
+    website: 'https://reactrouter.com',
+    sort: 7,
+    supersedes: ['hydrogen', 'vite'],
+    useRuntime: { src: 'package.json', use: '@vercel/remix-builder' },
+    detectors: {
+      some: [
+        {
+          path: 'vite.config.js',
+          matchContent: '@react-router/dev/vite',
+        },
+        {
+          path: 'vite.config.ts',
+          matchContent: '@react-router/dev/vite',
+        },
+        {
+          path: 'react-router.config.js',
+        },
+        {
+          path: 'react-router.config.ts',
+        },
+      ],
+    },
+    settings: {
+      installCommand: {
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
+      },
+      buildCommand: {
+        value: 'react-router build',
+        placeholder: '`npm run build` or `react-router build`',
+      },
+      devCommand: {
+        value: 'react-router dev',
+        placeholder: 'react-router dev',
+      },
+      outputDirectory: {
+        value: 'build',
+      },
+    },
+    dependency: 'react-router',
+    getOutputDirName: async () => 'build',
   },
   {
     name: 'Astro',
@@ -251,7 +311,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install` or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         value: 'astro build',
@@ -298,7 +359,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `hexo generate`',
@@ -333,7 +395,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `npx @11ty/eleventy`',
@@ -352,7 +415,7 @@ export const frameworks = [
     cachePattern: '.cache/**',
   },
   {
-    name: 'Docusaurus 2',
+    name: 'Docusaurus (v2+)',
     slug: 'docusaurus-2',
     demo: 'https://docusaurus-2-template.vercel.app',
     logo: 'https://api-frameworks.vercel.sh/framework-logos/docusaurus.svg',
@@ -370,7 +433,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `docusaurus build`',
@@ -438,7 +502,7 @@ export const frameworks = [
     ],
   },
   {
-    name: 'Docusaurus 1',
+    name: 'Docusaurus (v1)',
     slug: 'docusaurus',
     demo: 'https://docusaurus-template.vercel.app',
     logo: 'https://api-frameworks.vercel.sh/framework-logos/docusaurus.svg',
@@ -456,7 +520,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `docusaurus-build`',
@@ -507,7 +572,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `preact build`',
@@ -534,7 +600,44 @@ export const frameworks = [
     ],
   },
   {
-    name: 'SolidStart',
+    name: 'SolidStart (v1)',
+    slug: 'solidstart-1',
+    demo: 'https://solid-start-template.vercel.app',
+    logo: 'https://api-frameworks.vercel.sh/framework-logos/solid.svg',
+    tagline: 'Simple and performant reactivity for building user interfaces.',
+    description: 'A Solid app, created with SolidStart.',
+    website: 'https://start.solidjs.com',
+    envPrefix: 'VITE_',
+    detectors: {
+      every: [
+        {
+          matchPackage: 'solid-js',
+        },
+        {
+          matchPackage: '@solidjs/start',
+        },
+      ],
+    },
+    settings: {
+      installCommand: {
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
+      },
+      buildCommand: {
+        placeholder: '`npm run build` or `vinxi build`',
+        value: 'vinxi build',
+      },
+      devCommand: {
+        value: 'vinxi dev',
+      },
+      outputDirectory: {
+        value: '.output',
+      },
+    },
+    getOutputDirName: async () => '.output',
+  },
+  {
+    name: 'SolidStart (v0)',
     slug: 'solidstart',
     demo: 'https://solid-start-template.vercel.app',
     logo: 'https://api-frameworks.vercel.sh/framework-logos/solid.svg',
@@ -542,6 +645,7 @@ export const frameworks = [
     description: 'A Solid app, created with SolidStart.',
     website: 'https://solidjs.com',
     envPrefix: 'VITE_',
+    sort: 98,
     detectors: {
       every: [
         {
@@ -554,7 +658,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `solid-start build`',
@@ -590,7 +695,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `dojo build`',
@@ -650,7 +756,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `ember build`',
@@ -695,7 +802,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `vue-cli-service build`',
@@ -748,7 +856,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `ng build && scully`',
@@ -783,7 +892,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `ng build`',
@@ -826,7 +936,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `ng build`',
@@ -849,7 +960,11 @@ export const frameworks = [
 
         // If there is only one file in it that is a dir we'll use it as dist dir
         if (content.length === 1 && content[0].isDirectory()) {
-          return join(base, content[0].name);
+          const potentialOutDir = join(base, content[0].name);
+          const potentialOutDirWithBrowser = join(potentialOutDir, 'browser');
+          return existsSync(potentialOutDirWithBrowser)
+            ? potentialOutDirWithBrowser
+            : potentialOutDir;
         }
       } catch (error) {
         console.error(`Error detecting output directory: `, error);
@@ -884,7 +999,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `polymer build`',
@@ -943,7 +1059,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `rollup -c`',
@@ -970,7 +1087,7 @@ export const frameworks = [
   },
   {
     // TODO: fix detected as "sveltekit-1"
-    name: 'SvelteKit (Legacy Beta)',
+    name: 'SvelteKit (v0)',
     slug: 'sveltekit',
     demo: 'https://sveltekit-template.vercel.app',
     logo: 'https://api-frameworks.vercel.sh/framework-logos/svelte.svg',
@@ -993,7 +1110,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `svelte-kit build`',
@@ -1031,7 +1149,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: 'vite build',
@@ -1065,7 +1184,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `react-scripts build`',
@@ -1128,7 +1248,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `react-scripts build`',
@@ -1187,7 +1308,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `gridsome build`',
@@ -1222,7 +1344,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `umi build`',
@@ -1266,7 +1389,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `sapper export`',
@@ -1286,12 +1410,11 @@ export const frameworks = [
   {
     name: 'Saber',
     slug: 'saber',
-    demo: 'https://saber-template.vercel.app',
     logo: 'https://api-frameworks.vercel.sh/framework-logos/saber.svg',
     tagline:
       'Saber is a framework for building static sites in Vue.js that supports data from any source.',
     description: 'A Saber site, created with npm init.',
-    website: 'https://saber.land/',
+    website: 'https://saber.egoist.dev',
     detectors: {
       every: [
         {
@@ -1301,7 +1424,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `saber build`',
@@ -1350,7 +1474,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `stencil build`',
@@ -1404,6 +1529,7 @@ export const frameworks = [
     website: 'https://nuxtjs.org',
     sort: 2,
     envPrefix: 'NUXT_ENV_',
+    supersedes: ['nitro'],
     detectors: {
       some: [
         {
@@ -1419,11 +1545,12 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
-        placeholder: '`npm run build` or `nuxt generate`',
-        value: 'nuxt generate',
+        placeholder: '`npm run build` or `nuxt build`',
+        value: 'nuxt build',
       },
       devCommand: {
         value: 'nuxt',
@@ -1475,7 +1602,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         value: 'yarn rw deploy vercel',
@@ -1520,8 +1648,8 @@ export const frameworks = [
         placeholder: 'None',
       },
       buildCommand: {
-        placeholder: '`npm run build` or `hugo -D --gc`',
-        value: 'hugo -D --gc',
+        placeholder: '`npm run build` or `hugo --gc`',
+        value: 'hugo --gc',
       },
       devCommand: {
         value: 'hugo server -D -w -p $PORT',
@@ -1605,7 +1733,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `brunch build --production`',
@@ -1691,13 +1820,14 @@ export const frameworks = [
     defaultVersion: '0.13.0', // Must match the build image
   },
   {
-    name: 'Hydrogen',
+    name: 'Hydrogen (v1)',
     slug: 'hydrogen',
     demo: 'https://hydrogen-template.vercel.app',
     logo: 'https://api-frameworks.vercel.sh/framework-logos/hydrogen.svg',
     tagline: 'React framework for headless commerce',
     description: 'React framework for headless commerce',
     website: 'https://hydrogen.shopify.dev',
+    supersedes: ['vite'],
     useRuntime: { src: 'package.json', use: '@vercel/hydrogen' },
     envPrefix: 'PUBLIC_',
     detectors: {
@@ -1715,7 +1845,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         value: 'shopify hydrogen build',
@@ -1741,6 +1872,7 @@ export const frameworks = [
       'Vite is a new breed of frontend build tool that significantly improves the frontend development experience.',
     description: 'A Vue.js app, created with Vite.',
     website: 'https://vitejs.dev',
+    supersedes: ['ionic-react'],
     envPrefix: 'VITE_',
     detectors: {
       every: [
@@ -1751,7 +1883,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `vite build`',
@@ -1785,7 +1918,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `vitepress build docs`',
@@ -1817,7 +1951,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `vuepress build src`',
@@ -1850,7 +1985,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `parcel build`',
@@ -1874,6 +2010,114 @@ export const frameworks = [
       },
       {
         handle: 'filesystem',
+      },
+    ],
+  },
+  {
+    name: 'FastHTML (Experimental)',
+    slug: 'fasthtml',
+    demo: 'https://fasthtml-template.vercel.app',
+    logo: 'https://api-frameworks.vercel.sh/framework-logos/fasthtml.png',
+    darkModeLogo:
+      'https://api-frameworks.vercel.sh/framework-logos/fasthtml-dark.png',
+    tagline: 'The fastest way to create an HTML app',
+    description:
+      'A library for writing fast and scalable Starlette-powered web applications',
+    website: 'https://fastht.ml',
+    useRuntime: { src: 'main.py', use: '@vercel/python' },
+    detectors: {
+      every: [
+        {
+          path: 'requirements.txt',
+          matchContent: 'python-fasthtml',
+        },
+      ],
+    },
+    settings: {
+      installCommand: {
+        placeholder: '`pip install`',
+      },
+      buildCommand: {
+        placeholder: 'None',
+        value: null,
+      },
+      devCommand: {
+        value: 'uvicorn main:app --reload',
+      },
+      outputDirectory: {
+        value: 'N/A',
+      },
+    },
+    getOutputDirName: async () => '',
+    defaultRoutes: [
+      {
+        handle: 'filesystem',
+      },
+      {
+        src: '/(.*)',
+        dest: '/main',
+      },
+    ],
+  },
+  {
+    name: 'Sanity (v3)',
+    slug: 'sanity-v3',
+    demo: 'https://sanity-studio-template.vercel.app',
+    logo: 'https://api-frameworks.vercel.sh/framework-logos/sanity.svg',
+    tagline: 'The structured content platform.',
+    description: 'A Sanity Studio',
+    website: 'https://www.sanity.io',
+    envPrefix: 'SANITY_STUDIO_',
+    detectors: {
+      some: [
+        {
+          path: 'sanity.json',
+        },
+        {
+          path: 'sanity.config.js',
+        },
+        {
+          path: 'sanity.config.jsx',
+        },
+        {
+          path: 'sanity.config.ts',
+        },
+        {
+          path: 'sanity.config.tsx',
+        },
+      ],
+      every: [
+        {
+          path: 'package.json',
+          matchContent:
+            '"(dev)?(d|D)ependencies":\\s*{[^}]*"sanity":\\s*"\\^?3\\..*"[^}]*}',
+        },
+      ],
+    },
+    settings: {
+      installCommand: {
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
+      },
+      buildCommand: {
+        placeholder: '`npm run build` or `sanity build`',
+        value: 'sanity build',
+      },
+      devCommand: {
+        value: 'sanity dev --port $PORT',
+      },
+      outputDirectory: {
+        value: 'dist',
+      },
+    },
+    getOutputDirName: async () => 'dist',
+    defaultRoutes: [
+      {
+        handle: 'filesystem',
+      },
+      {
+        src: '/(.*)',
+        dest: '/index.html',
       },
     ],
   },
@@ -1907,7 +2151,8 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run build` or `sanity build`',
@@ -1951,10 +2196,12 @@ export const frameworks = [
     },
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         value: 'storybook build',
+        ignorePackageJsonScript: true,
       },
       devCommand: {
         value: `storybook dev -p $PORT`,
@@ -1966,13 +2213,45 @@ export const frameworks = [
     getOutputDirName: async () => 'storybook-static',
   },
   {
+    name: 'Nitro',
+    slug: 'nitro',
+    logo: 'https://api-frameworks.vercel.sh/framework-logos/nitro.svg',
+    demo: 'https://nitro-template.vercel.app',
+    tagline: 'Nitro is a next generation server toolkit.',
+    description:
+      'Nitro lets you create web servers that run on multiple platforms.',
+    website: 'https://nitro.build/',
+    detectors: {
+      every: [{ matchPackage: 'nitropack' }],
+    },
+    settings: {
+      installCommand: {
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
+      },
+      buildCommand: {
+        placeholder: '`npm run build` or `nitro build`',
+        value: 'nitro build',
+      },
+      devCommand: {
+        value: 'nitro dev',
+      },
+      outputDirectory: {
+        value: 'dist',
+      },
+    },
+    dependency: 'nitropack',
+    getOutputDirName: () => Promise<string>,
+  },
+  {
     name: 'Other',
     slug: null,
     logo: 'https://api-frameworks.vercel.sh/framework-logos/other.svg',
     description: 'No framework or an unoptimized framework.',
     settings: {
       installCommand: {
-        placeholder: '`yarn install`, `pnpm install`, or `npm install`',
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
       },
       buildCommand: {
         placeholder: '`npm run vercel-build` or `npm run build`',
@@ -1990,5 +2269,5 @@ export const frameworks = [
   },
 ] as const;
 
-const def = frameworks as readonly Framework[];
-export default def;
+export const frameworkList = frameworks as readonly Framework[];
+export default frameworkList;

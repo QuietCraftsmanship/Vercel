@@ -11,18 +11,34 @@ import type {
   ProjectSettings,
 } from '@vercel/build-utils';
 import { isOfficialRuntime } from './is-official-runtime';
+
+/**
+ * Pattern for finding all supported middleware files.
+ */
+export const REGEX_MIDDLEWARE_FILES = 'middleware.[jt]s';
+
+/**
+ * Pattern for files that the Vercel platform cares about separately from frameworks.
+ */
+export const REGEX_VERCEL_PLATFORM_FILES = `api/**,package.json,${REGEX_MIDDLEWARE_FILES}`;
+
+/**
+ * Pattern for non-Vercel platform files.
+ */
+export const REGEX_NON_VERCEL_PLATFORM_FILES = `!{${REGEX_VERCEL_PLATFORM_FILES}}`;
+
 const slugToFramework = new Map<string | null, Framework>(
   frameworkList.map(f => [f.slug, f])
 );
 
-interface ErrorResponse {
+export interface ErrorResponse {
   code: string;
   message: string;
   action?: string;
   link?: string;
 }
 
-interface Options {
+export interface Options {
   tag?: string;
   functions?: BuilderFunctions;
   ignoreBuildScript?: boolean;
@@ -279,7 +295,7 @@ export async function detectBuilders(
       // and package.json can be served as static files
       frontendBuilder = {
         use: '@vercel/static',
-        src: '!{api/**,package.json,middleware.[jt]s}',
+        src: REGEX_NON_VERCEL_PLATFORM_FILES,
         config: {
           zeroConfig: true,
         },
@@ -458,7 +474,7 @@ function getApiMatches(): Builder[] {
 
   return [
     {
-      src: 'middleware.[jt]s',
+      src: REGEX_MIDDLEWARE_FILES,
       use: `@vercel/node`,
       config: { ...config, middleware: true },
     },
@@ -612,11 +628,11 @@ function validateFunctions({ functions = {} }: Options) {
 
     if (
       func.memory !== undefined &&
-      (func.memory < 128 || func.memory > 3008)
+      (func.memory < 128 || func.memory > 10240)
     ) {
       return {
         code: 'invalid_function_memory',
-        message: 'Functions must have a memory value between 128 and 3008',
+        message: 'Functions must have a memory value between 128 and 10240',
       };
     }
 
@@ -992,6 +1008,7 @@ function getRouteResult(
   const rewriteRoutes: Route[] = [];
   const errorRoutes: Route[] = [];
   const framework = frontendBuilder?.config?.framework || '';
+  const isGatsby = framework === 'gatsby';
   const isNextjs =
     framework === 'nextjs' || isOfficialRuntime('next', frontendBuilder?.use);
   const ignoreRuntimes = slugToFramework.get(framework)?.ignoreRuntimes;
@@ -1071,8 +1088,8 @@ function getRouteResult(
     });
   }
 
-  if (options.featHandleMiss && !isNextjs) {
-    // Exclude Next.js to avoid overriding custom error page
+  if (options.featHandleMiss && !isNextjs && !isGatsby) {
+    // Exclude Next.js (and Gatsby) to avoid overriding custom error page
     // https://nextjs.org/docs/advanced-features/custom-error-page
     errorRoutes.push({
       status: 404,

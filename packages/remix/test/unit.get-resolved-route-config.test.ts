@@ -1,12 +1,13 @@
+import { describe, it, expect } from 'vitest';
 import { getResolvedRouteConfig } from '../src/utils';
-import type {
-  ConfigRoute,
-  RouteManifest,
-} from '@remix-run/dev/dist/config/routes';
+import type { RouteManifest, RouteManifestEntry } from '../src/types';
 import type { BaseFunctionConfig } from '@vercel/static-config';
 
 describe('getResolvedRouteConfig()', () => {
-  const staticConfigsMap = new Map<ConfigRoute, BaseFunctionConfig | null>([
+  const staticConfigsMap = new Map<
+    RouteManifestEntry,
+    BaseFunctionConfig | null
+  >([
     [{ id: 'root', file: 'root.tsx' }, null],
     [
       { id: 'routes/edge', file: 'routes/edge.tsx', parentId: 'root' },
@@ -38,7 +39,7 @@ describe('getResolvedRouteConfig()', () => {
         file: 'routes/node/mem.tsx',
         parentId: 'routes/node',
       },
-      { maxDuration: 5, memory: 3008 },
+      { maxDuration: 5, memory: 3009 },
     ],
   ]);
 
@@ -65,12 +66,28 @@ describe('getResolvedRouteConfig()', () => {
         runtime: 'nodejs',
         regions: ['sfo1'],
         maxDuration: 5,
-        memory: 3008,
+        memory: 3009,
       },
     },
   ])('should resolve config for "$id" route', ({ id, expected }) => {
     const route = routes[id];
-    const config = getResolvedRouteConfig(route, routes, staticConfigsMap);
+    const config = getResolvedRouteConfig(
+      route,
+      routes,
+      staticConfigsMap,
+      false
+    );
     expect(config).toMatchObject(expected);
+  });
+
+  it('should resolve config as "edge" for Hydrogen v2', () => {
+    const route = routes['root'];
+    const config = getResolvedRouteConfig(
+      route,
+      routes,
+      staticConfigsMap,
+      true
+    );
+    expect(config).toMatchObject({ runtime: 'edge', regions: undefined });
   });
 });

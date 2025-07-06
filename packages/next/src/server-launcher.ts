@@ -1,4 +1,6 @@
 import { IncomingMessage, ServerResponse } from 'http';
+import { getContext as getVercelRequestContext } from './vercel-request-context';
+import { withNextRequestContext } from './next-request-context';
 // The Next.js builder can emit the project in a subdirectory depending on how
 // many folder levels of `node_modules` are traced. To ensure `process.cwd()`
 // returns the proper path, we change the directory to the folder with the
@@ -18,17 +20,24 @@ if (process.env.NODE_ENV !== 'production' && region !== 'dev1') {
   process.env.NODE_ENV = 'production';
 }
 
-// pre-next-server-target
+// @preserve pre-next-server-target
 
 // eslint-disable-next-line
 const NextServer = require('__NEXT_SERVER_PATH__').default;
+
+// @preserve next-server-preload-target
+
+// __NEXT_CONFIG__ value is injected
+declare const __NEXT_CONFIG__: any;
+const conf = __NEXT_CONFIG__;
+
 const nextServer = new NextServer({
-  // @ts-ignore __NEXT_CONFIG__ value is injected
-  conf: __NEXT_CONFIG__,
+  conf,
   dir: '.',
   minimalMode: true,
   customServer: false,
 });
+
 
 const requestHandler = nextServer.getRequestHandler();
 
@@ -38,6 +47,21 @@ module.exports = (async () => {
     try {
       // entryDirectory handler
       await requestHandler(req, res);
+
+// Returns a wrapped handler that runs with "@next/request-context"
+// and will crash the lambda if an error isn't caught.
+const serve =
+  (handler: any) => async (req: IncomingMessage, res: ServerResponse) => {
+    try {
+      const vercelContext = getVercelRequestContext();
+      await withNextRequestContext(
+        { waitUntil: vercelContext.waitUntil },
+        () => {
+          // @preserve entryDirectory handler
+          return handler(req, res);
+        }
+      );
+
     } catch (err) {
       console.error(err);
       // crash the lambda immediately to clean up any bad module state,
@@ -46,4 +70,25 @@ module.exports = (async () => {
       process.exit(1);
     }
   };
+
 })();
+
+
+// The default handler method should be exported as a function on the module.
+module.exports = serve(nextServer.getRequestHandler());
+
+// If available, add `getRequestHandlerWithMetadata` to the export if it's
+// required by the configuration.
+if (
+  conf.experimental?.ppr &&
+  'getRequestHandlerWithMetadata' in nextServer &&
+  typeof nextServer.getRequestHandlerWithMetadata === 'function'
+) {
+  module.exports.getRequestHandlerWithMetadata = (metadata: any) =>
+    serve(nextServer.getRequestHandlerWithMetadata(metadata));
+}
+
+if (process.env.NEXT_PRIVATE_PRELOAD_ENTRIES) {
+  module.exports.preload = nextServer.unstable_preloadEntries.bind(nextServer);
+}
+

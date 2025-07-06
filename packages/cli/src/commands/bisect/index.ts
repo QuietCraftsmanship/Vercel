@@ -2,92 +2,76 @@ import open from 'open';
 import execa from 'execa';
 import plural from 'pluralize';
 import { resolve } from 'path';
-import chalk, { Chalk } from 'chalk';
+import chalk, { type Chalk } from 'chalk';
 import { URLSearchParams, parse } from 'url';
 
 import box from '../../util/output/box';
-import sleep from '../../util/sleep';
 import formatDate from '../../util/format-date';
 import link from '../../util/output/link';
-import logo from '../../util/output/logo';
-import getArgs from '../../util/get-args';
-import Client from '../../util/client';
-import { getPkgName } from '../../util/pkg-name';
-import { Deployment, PaginationOptions } from '@vercel-internals/types';
+import { parseArguments } from '../../util/get-args';
+import type Client from '../../util/client';
+import type { Deployment } from '@vercel-internals/types';
 import { normalizeURL } from '../../util/bisect/normalize-url';
 import getScope from '../../util/get-scope';
 import getDeployment from '../../util/get-deployment';
+import { help } from '../help';
+import { bisectCommand } from './command';
+import { getFlagsSpecification } from '../../util/get-flags-specification';
+import { printError } from '../../util/error';
+import output from '../../output-manager';
+import { BisectTelemetryClient } from '../../util/telemetry/commands/bisect';
 
 interface Deployments {
   deployments: Deployment[];
-  pagination: PaginationOptions;
 }
+export default async function bisect(client: Client): Promise<number> {
+  let parsedArgs = null;
 
-const pkgName = getPkgName();
+  const flagsSpecification = getFlagsSpecification(bisectCommand.options);
 
-const help = () => {
-  console.log(`
-  ${chalk.bold(`${logo} ${pkgName} bisect`)} [options]
+  try {
+    parsedArgs = parseArguments(client.argv.slice(2), flagsSpecification);
+  } catch (error) {
+    printError(error);
+    return 1;
+  }
 
-  ${chalk.dim('Options:')}
-
-    -h, --help                 Output usage information
-    -d, --debug                Debug mode [off]
-    --no-color                 No color mode [off]
-    -b, --bad                  Known bad URL
-    -g, --good                 Known good URL
-    -o, --open                 Automatically open each URL in the browser
-    -p, --path                 Subpath of the deployment URL to test
-    -r, --run                  Test script to run for each deployment
-
-  ${chalk.dim('Examples:')}
-
-  ${chalk.gray('–')} Bisect the current project interactively
-
-      ${chalk.cyan(`$ ${pkgName} bisect`)}
-
-  ${chalk.gray('–')} Bisect with a known bad deployment
-
-      ${chalk.cyan(`$ ${pkgName} bisect --bad example-310pce9i0.vercel.app`)}
-
-  ${chalk.gray('–')} Automated bisect with a run script
-
-      ${chalk.cyan(`$ ${pkgName} bisect --run ./test.sh`)}
-  `);
-};
-
-export default async function main(client: Client): Promise<number> {
-  const { output } = client;
-  const scope = await getScope(client);
-  const { contextName } = scope;
-
-  const argv = getArgs(client.argv.slice(2), {
-    '--bad': String,
-    '-b': '--bad',
-    '--good': String,
-    '-g': '--good',
-    '--open': Boolean,
-    '-o': '--open',
-    '--path': String,
-    '-p': '--path',
-    '--run': String,
-    '-r': '--run',
+  const telemetry = new BisectTelemetryClient({
+    opts: {
+      store: client.telemetryEventStore,
+    },
   });
 
-  if (argv['--help']) {
-    help();
+  if (parsedArgs.flags['--help']) {
+    telemetry.trackCliFlagHelp('bisect');
+    output.print(help(bisectCommand, { columns: client.stderr.columns }));
     return 2;
   }
 
+  telemetry.trackCliOptionGood(parsedArgs.flags['--good']);
+  telemetry.trackCliOptionBad(parsedArgs.flags['--bad']);
+  telemetry.trackCliOptionPath(parsedArgs.flags['--path']);
+  telemetry.trackCliOptionRun(parsedArgs.flags['--run']);
+  telemetry.trackCliFlagOpen(parsedArgs.flags['--open']);
+
+  const scope = await getScope(client);
+  const { contextName } = scope;
+
   let bad =
-    argv['--bad'] ||
-    (await prompt(client, `Specify a URL where the bug occurs:`));
+    parsedArgs.flags['--bad'] ||
+    (await client.input.text({
+      message: `Specify a URL where the bug occurs:`,
+      validate: val => (val ? true : 'A URL must be provided'),
+    }));
   let good =
-    argv['--good'] ||
-    (await prompt(client, `Specify a URL where the bug does not occur:`));
-  let subpath = argv['--path'] || '';
-  let run = argv['--run'] || '';
-  const openEnabled = argv['--open'] || false;
+    parsedArgs.flags['--good'] ||
+    (await client.input.text({
+      message: `Specify a URL where the bug does not occur:`,
+      validate: val => (val ? true : 'A URL must be provided'),
+    }));
+  let subpath = parsedArgs.flags['--path'] || '';
+  let run = parsedArgs.flags['--run'] || '';
+  const openEnabled = parsedArgs.flags['--open'] || false;
 
   if (run) {
     run = resolve(run);
@@ -133,10 +117,10 @@ export default async function main(client: Client): Promise<number> {
   }
 
   if (!subpath) {
-    subpath = await prompt(
-      client,
-      `Specify the URL subpath where the bug occurs:`
-    );
+    subpath = await client.input.text({
+      message: `Specify the URL subpath where the bug occurs:`,
+      validate: val => (val ? true : 'A subpath must be provided'),
+    });
   }
 
   output.spinner('Retrieving deployments…');
@@ -206,44 +190,37 @@ export default async function main(client: Client): Promise<number> {
 
   // Fetch all the project's "READY" deployments with the pagination API
   let deployments: Deployment[] = [];
-  let next: number | undefined = badDeployment.createdAt + 1;
-  do {
-    const query = new URLSearchParams();
-    query.set('projectId', projectId);
-    if (badDeployment.target) {
-      query.set('target', badDeployment.target);
-    }
-    query.set('limit', '100');
-    query.set('state', 'READY');
-    if (next) {
-      query.set('until', String(next));
-    }
 
-    const res = await client.fetch<Deployments>(`/v6/deployments?${query}`, {
+  const query = new URLSearchParams();
+  query.set('projectId', projectId);
+  if (badDeployment.target) {
+    query.set('target', badDeployment.target);
+  }
+  query.set('state', 'READY');
+  query.set('until', String(badDeployment.createdAt + 1));
+
+  for await (const chunk of client.fetchPaginated<Deployments>(
+    `/v6/deployments?${query}`,
+    {
       accountId: badDeployment.ownerId,
-    });
-
-    next = res.pagination.next;
-
-    let newDeployments = res.deployments;
+    }
+  )) {
+    let newDeployments = chunk.deployments;
 
     // If we have the "good" deployment in this chunk, then we're done
+    let hasGood = false;
     for (let i = 0; i < newDeployments.length; i++) {
       if (newDeployments[i].url === good) {
         // grab all deployments up until the good one
         newDeployments = newDeployments.slice(0, i);
-        next = undefined;
+        hasGood = true;
         break;
       }
     }
 
     deployments = deployments.concat(newDeployments);
-
-    if (next) {
-      // Small sleep to avoid rate limiting
-      await sleep(100);
-    }
-  } while (next);
+    if (hasGood) break;
+  }
 
   if (!deployments.length) {
     output.error(
@@ -321,9 +298,7 @@ export default async function main(client: Client): Promise<number> {
       if (openEnabled) {
         await open(testUrl);
       }
-      const answer = await client.prompt({
-        type: 'expand',
-        name: 'action',
+      action = await client.input.expand({
         message: 'Select an action:',
         choices: [
           { key: 'g', name: 'Good', value: 'good' },
@@ -331,7 +306,6 @@ export default async function main(client: Client): Promise<number> {
           { key: 's', name: 'Skip', value: 'skip' },
         ],
       });
-      action = answer.action;
     }
 
     if (action === 'good') {
@@ -346,7 +320,7 @@ export default async function main(client: Client): Promise<number> {
 
   output.print('\n');
 
-  let result = [
+  const result = [
     chalk.bold(
       `The first bad deployment is: ${link(`https://${lastBad.url}`)}`
     ),
@@ -380,20 +354,4 @@ function getCommit(deployment: Deployment) {
     deployment.meta?.gitlabCommitMessage ||
     deployment.meta?.bitbucketCommitMessage;
   return { sha, message };
-}
-
-async function prompt(client: Client, message: string): Promise<string> {
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    const { val } = await client.prompt({
-      type: 'input',
-      name: 'val',
-      message,
-    });
-    if (val) {
-      return val;
-    } else {
-      client.output.error('A value must be specified');
-    }
-  }
 }

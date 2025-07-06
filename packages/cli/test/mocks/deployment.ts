@@ -1,8 +1,10 @@
+import { type Mock, beforeEach } from 'vitest';
 import { URL } from 'url';
 import chance from 'chance';
 import { client } from './client';
-import { Build, Deployment, User } from '@vercel-internals/types';
+import type { Build, Deployment, User } from '@vercel-internals/types';
 import type { Request, Response } from 'express';
+import { defaultProject } from './project';
 
 let deployments = new Map<string, Deployment>();
 let deploymentBuilds = new Map<Deployment, Build[]>();
@@ -16,6 +18,8 @@ export function useDeployment({
   creator,
   state = 'READY',
   createdAt,
+  project = defaultProject,
+  target = 'production',
 }: {
   creator: Pick<User, 'id' | 'email' | 'name' | 'username'>;
   state?:
@@ -26,6 +30,8 @@ export function useDeployment({
     | 'READY'
     | 'CANCELED';
   createdAt?: number;
+  project?: any; // FIX ME: Use `Project` once PR #9956 is merged
+  target?: Deployment['target'];
 }) {
   setupDeploymentEndpoints();
 
@@ -53,13 +59,14 @@ export function useDeployment({
     name,
     ownerId: creator.id,
     plan: 'hobby',
+    projectId: project.id,
     public: false,
     ready: createdAt + 30000,
     readyState: state,
     regions: [],
     routes: [],
     status: state,
-    target: 'production',
+    target,
     type: 'LAMBDAS',
     url: url.hostname,
     version: 2,
@@ -71,41 +78,43 @@ export function useDeployment({
   return deployment;
 }
 
-export function useDeploymentMissingProjectSettings() {
-  client.scenario.post('/:version/deployments', (_req, res) => {
-    res.status(400).json({
-      error: {
-        code: 'missing_project_settings',
-        message:
-          'The `projectSettings` object is required for new projects, but is missing in the deployment payload',
-        framework: {
-          name: 'Other',
-          slug: null,
-          logo: 'https://api-frameworks.vercel.sh/framework-logos/other.svg',
-          description: 'No framework or an unoptimized framework.',
-          settings: {
-            installCommand: {
-              placeholder: '`yarn install`, `pnpm install`, or `npm install`',
-            },
-            buildCommand: {
-              placeholder: '`npm run vercel-build` or `npm run build`',
-              value: null,
-            },
-            devCommand: { placeholder: 'None', value: null },
-            outputDirectory: { placeholder: '`public` if it exists, or `.`' },
-          },
-        },
-        projectSettings: {
-          devCommand: null,
-          installCommand: null,
-          buildCommand: null,
-          outputDirectory: null,
-          rootDirectory: null,
-          framework: null,
-        },
-      },
-    });
-  });
+export function useBuildLogs({
+  deployment,
+  logProducer,
+}: {
+  deployment: Deployment;
+  logProducer: () => AsyncGenerator<object, void, unknown>;
+}) {
+  client.scenario.get(
+    `/v3/now/deployments/${deployment.id}/events`,
+    async (req, res) => {
+      for await (const log of logProducer()) {
+        res.write(JSON.stringify(log) + '\n');
+      }
+      res.end();
+    }
+  );
+}
+
+export function useRuntimeLogs({
+  deployment,
+  logProducer,
+  spy,
+}: {
+  deployment: Deployment;
+  logProducer: () => AsyncGenerator<object, void, unknown>;
+  spy?: Mock;
+}) {
+  client.scenario.get(
+    `/v1/projects/${deployment.projectId}/deployments/${deployment.id}/runtime-logs`,
+    async (req, res) => {
+      spy?.(req.path, req.query);
+      for await (const log of logProducer()) {
+        res.write(JSON.stringify(log) + '\n');
+      }
+      res.end();
+    }
+  );
 }
 
 beforeEach(() => {
@@ -162,6 +171,15 @@ function setupDeploymentEndpoints(): void {
     }
     const builds = deploymentBuilds.get(deployment);
     res.json({ builds });
+  });
+
+  client.scenario.get('/:version/deployments/:id/aliases', (req, res) => {
+    const limit =
+      typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
+    res.json({
+      aliases: [],
+      pagination: { count: limit, total: limit, page: 1, pages: 1 },
+    });
   });
 
   function handleGetDeployments(req: Request, res: Response) {

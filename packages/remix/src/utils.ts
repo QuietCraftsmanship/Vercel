@@ -1,18 +1,89 @@
-import { existsSync, promises as fs } from 'fs';
-import { join, relative, resolve } from 'path';
-import { pathToRegexp, Key } from 'path-to-regexp';
-import { debug, spawnAsync } from '@vercel/build-utils';
-import { readConfig } from '@remix-run/dev/dist/config';
-import type {
-  ConfigRoute,
-  RouteManifest,
-} from '@remix-run/dev/dist/config/routes';
-import type { RemixConfig } from '@remix-run/dev/dist/config';
+import semver from 'semver';
+import { existsSync, readFileSync, promises as fs } from 'fs';
+import { basename, dirname, extname, join, relative, resolve, sep } from 'path';
+import { debug, type PackageJson } from '@vercel/build-utils';
+import { walkParentDirs } from '@vercel/build-utils';
+import { createRequire } from 'module';
 import type { BaseFunctionConfig } from '@vercel/static-config';
-import type {
-  CliType,
-  SpawnOptionsExtended,
-} from '@vercel/build-utils/dist/fs/run-user-scripts';
+import type { RouteManifestEntry, RouteManifest, RemixConfig } from './types';
+
+/*
+  [START] Temporary double-install of path-to-regexp to compare the impact of the update
+  https://linear.app/vercel/issue/ZERO-3067/log-potential-impact-of-path-to-regexpupdate
+*/
+import { pathToRegexp as pathToRegexpCurrent, Key } from 'path-to-regexp';
+import { pathToRegexp as pathToRegexpUpdated } from 'path-to-regexp-updated';
+
+function cloneKeys(keys: Key[] | undefined): Key[] | undefined {
+  if (typeof keys === 'undefined') {
+    return undefined;
+  }
+
+  return keys.slice(0);
+}
+
+function compareKeys(left: Key[] | undefined, right: Key[] | undefined) {
+  const leftSerialized =
+    typeof left === 'undefined' ? 'undefined' : left.toString();
+  const rightSerialized =
+    typeof right === 'undefined' ? 'undefined' : right.toString();
+  return leftSerialized === rightSerialized;
+}
+
+// run the updated version of path-to-regexp, compare the results, and log if different
+export function pathToRegexp(
+  callerId: string,
+  path: string,
+  keys?: Key[],
+  options?: { strict: boolean; sensitive: boolean; delimiter: string }
+) {
+  const newKeys = cloneKeys(keys);
+  const currentRegExp = pathToRegexpCurrent(path, keys, options);
+
+  try {
+    const currentKeys = keys;
+    const newRegExp = pathToRegexpUpdated(path, newKeys, options);
+
+    // FORCE_PATH_TO_REGEXP_LOG can be used to force these logs to render
+    // for verification that they show up in the build logs as expected
+
+    const isDiffRegExp = currentRegExp.toString() !== newRegExp.toString();
+    if (process.env.FORCE_PATH_TO_REGEXP_LOG || isDiffRegExp) {
+      const message = JSON.stringify({
+        path,
+        currentRegExp: currentRegExp.toString(),
+        newRegExp: newRegExp.toString(),
+      });
+      console.error(`[vc] PATH TO REGEXP PATH DIFF @ #${callerId}: ${message}`);
+    }
+
+    const isDiffKeys = !compareKeys(keys, newKeys);
+    if (process.env.FORCE_PATH_TO_REGEXP_LOG || isDiffKeys) {
+      const message = JSON.stringify({
+        isDiffKeys,
+        currentKeys,
+        newKeys,
+      });
+      console.error(`[vc] PATH TO REGEXP KEYS DIFF @ #${callerId}: ${message}`);
+    }
+  } catch (err) {
+    const error = err as Error;
+    const message = JSON.stringify({
+      path,
+      error: error.message,
+    });
+
+    console.error(`[vc] PATH TO REGEXP ERROR @ #${callerId}: ${message}`);
+  }
+
+  return currentRegExp;
+}
+/*
+  [END] Temporary double-install of path-to-regexp to compare the impact of the update
+  https://linear.app/vercel/issue/ZERO-3067/log-potential-impact-of-path-to-regexpupdate
+*/
+
+export const require_ = createRequire(__filename);
 
 export interface ResolvedNodeRouteConfig {
   runtime: 'nodejs';
@@ -20,6 +91,7 @@ export interface ResolvedNodeRouteConfig {
   maxDuration?: number;
   memory?: number;
 }
+
 export interface ResolvedEdgeRouteConfig {
   runtime: 'edge';
   regions?: BaseFunctionConfig['regions'];
@@ -57,8 +129,12 @@ export function findEntry(dir: string, basename: string): string | undefined {
 
 const configExts = ['.js', '.cjs', '.mjs'];
 
-export function findConfig(dir: string, basename: string): string | undefined {
-  for (const ext of configExts) {
+export function findConfig(
+  dir: string,
+  basename: string,
+  exts = configExts
+): string | undefined {
+  for (const ext of exts) {
     const name = basename + ext;
     const file = join(dir, name);
     if (existsSync(file)) return file;
@@ -72,9 +148,10 @@ function isEdgeRuntime(runtime: string): boolean {
 }
 
 export function getResolvedRouteConfig(
-  route: ConfigRoute,
+  route: RouteManifestEntry,
   routes: RouteManifest,
-  configs: Map<ConfigRoute, BaseFunctionConfig | null>
+  configs: Map<RouteManifestEntry, BaseFunctionConfig | null>,
+  isHydrogen2: boolean
 ): ResolvedRouteConfig {
   let runtime: ResolvedRouteConfig['runtime'] | undefined;
   let regions: ResolvedRouteConfig['regions'];
@@ -103,8 +180,8 @@ export function getResolvedRouteConfig(
     regions = Array.from(new Set(regions)).sort();
   }
 
-  if (runtime === 'edge') {
-    return { runtime, regions };
+  if (isHydrogen2 || runtime === 'edge') {
+    return { runtime: 'edge', regions };
   }
 
   if (regions && !Array.isArray(regions)) {
@@ -123,13 +200,16 @@ export function calculateRouteConfigHash(config: ResolvedRouteConfig): string {
 
 export function isLayoutRoute(
   routeId: string,
-  routes: Pick<ConfigRoute, 'id' | 'parentId'>[]
+  routes: Pick<RouteManifestEntry, 'id' | 'parentId'>[]
 ): boolean {
   return routes.some(r => r.parentId === routeId);
 }
 
-export function* getRouteIterator(route: ConfigRoute, routes: RouteManifest) {
-  let currentRoute: ConfigRoute = route;
+export function* getRouteIterator(
+  route: RouteManifestEntry,
+  routes: RouteManifest
+) {
+  let currentRoute: RouteManifestEntry = route;
   do {
     yield currentRoute;
     if (currentRoute.parentId) {
@@ -141,14 +221,15 @@ export function* getRouteIterator(route: ConfigRoute, routes: RouteManifest) {
 }
 
 export function getPathFromRoute(
-  route: ConfigRoute,
+  input: RouteManifestEntry,
   routes: RouteManifest
 ): ResolvedRoutePaths {
+  let route = input;
   if (
     route.id === 'root' ||
-    (route.parentId === 'root' && !route.path && route.index)
+    ((!route.path || route.path === '/') && route.index)
   ) {
-    return { path: 'index', rePath: '/index' };
+    route = { ...route, path: 'index' };
   }
 
   const pathParts: string[] = [];
@@ -176,6 +257,13 @@ export function getPathFromRoute(
     }
   }
 
+  // If the route is an index route and has a parent, then
+  // we can remove the "index" from the path since it's implied
+  if (pathParts.length > 1 && pathParts[0] === 'index') {
+    pathParts.shift();
+    rePathParts.shift();
+  }
+
   const path = pathParts.reverse().join('/');
 
   // Replace "/*" at the end to handle "splat routes"
@@ -188,13 +276,13 @@ export function getPathFromRoute(
 
 export function getRegExpFromPath(rePath: string): RegExp | false {
   const keys: Key[] = [];
-  const re = pathToRegexp(rePath, keys);
+  const re = pathToRegexp('923', rePath, keys);
   return keys.length > 0 ? re : false;
 }
 
 /**
  * Updates the `dest` process.env object to match the `source` one.
- * A function is returned to restore the the `dest` env back to how
+ * A function is returned to restore the `dest` env back to how
  * it was originally.
  */
 export function syncEnv(source: NodeJS.ProcessEnv, dest: NodeJS.ProcessEnv) {
@@ -209,7 +297,13 @@ export function syncEnv(source: NodeJS.ProcessEnv, dest: NodeJS.ProcessEnv) {
   return () => syncEnv(originalDest, dest);
 }
 
-export async function chdirAndReadConfig(dir: string, packageJsonPath: string) {
+export async function chdirAndReadConfig(
+  remixRunDevPath: string,
+  dir: string,
+  packageJsonPath: string
+) {
+  const { readConfig } = await import(join(remixRunDevPath, 'dist/config.js'));
+
   const originalCwd = process.cwd();
 
   // As of Remix v1.14.0, reading the config may trigger adding
@@ -246,30 +340,218 @@ export async function chdirAndReadConfig(dir: string, packageJsonPath: string) {
   return remixConfig;
 }
 
-export interface AddDependencyOptions extends SpawnOptionsExtended {
-  saveDev?: boolean;
+export function resolveSemverMinMax(
+  min: string,
+  max: string,
+  version: string
+): string {
+  const floored = semver.intersects(version, `>= ${min}`) ? version : min;
+  return semver.intersects(floored, `<= ${max}`) ? floored : max;
 }
 
-/**
- * Runs `npm i ${name}` / `pnpm i ${name}` / `yarn add ${name}`.
- */
-export function addDependency(
-  cliType: CliType,
-  names: string[],
-  opts: AddDependencyOptions = {}
-) {
-  const args: string[] = [];
-  if (cliType === 'npm' || cliType === 'pnpm') {
-    args.push('install');
-    if (opts.saveDev) {
-      args.push('--save-dev');
+export async function ensureResolvable(
+  start: string,
+  base: string,
+  pkgName: string
+): Promise<string> {
+  try {
+    const resolvedPkgPath = require_.resolve(`${pkgName}/package.json`, {
+      paths: [start],
+    });
+    const resolvedPath = dirname(resolvedPkgPath);
+    if (!relative(base, resolvedPath).startsWith(`..${sep}`)) {
+      // Resolved path is within the root of the project, so all good
+      debug(`"${pkgName}" resolved to '${resolvedPath}'`);
+      return resolvedPath;
     }
-  } else {
-    // 'yarn'
-    args.push('add');
-    if (opts.saveDev) {
-      args.push('--dev');
+  } catch (err: any) {
+    if (err.code !== 'MODULE_NOT_FOUND') {
+      throw err;
     }
   }
-  return spawnAsync(cliType, args.concat(names), opts);
+
+  // If we got to here then `pkgName` was not resolvable up to the root
+  // of the project. Try a couple symlink tricks, otherwise we'll bail.
+
+  // Attempt to find the package in `node_modules/.pnpm` (pnpm)
+  const pnpmDir = await walkParentDirs({
+    base,
+    start,
+    filename: 'node_modules/.pnpm',
+  });
+  if (pnpmDir) {
+    const prefix = `${pkgName.replace('/', '+')}@`;
+    const packages = await fs.readdir(pnpmDir);
+    const match = packages.find(p => p.startsWith(prefix));
+    if (match) {
+      const pkgDir = join(pnpmDir, match, 'node_modules', pkgName);
+      await ensureSymlink(pkgDir, join(start, 'node_modules'), pkgName);
+      return pkgDir;
+    }
+  }
+
+  // Attempt to find the package in `node_modules/.store` (npm 9+ linked mode)
+  const npmDir = await walkParentDirs({
+    base,
+    start,
+    filename: 'node_modules/.store',
+  });
+  if (npmDir) {
+    const prefix = `${basename(pkgName)}@`;
+    const prefixDir = join(npmDir, dirname(pkgName));
+    const packages = await fs.readdir(prefixDir);
+    const match = packages.find(p => p.startsWith(prefix));
+    if (match) {
+      const pkgDir = join(prefixDir, match, 'node_modules', pkgName);
+      await ensureSymlink(pkgDir, join(start, 'node_modules'), pkgName);
+      return pkgDir;
+    }
+  }
+
+  throw new Error(
+    `Failed to resolve "${pkgName}". To fix this error, add "${pkgName}" to "dependencies" in your \`package.json\` file.`
+  );
+}
+
+async function ensureSymlink(
+  target: string,
+  nodeModulesDir: string,
+  pkgName: string
+) {
+  const symlinkPath = join(nodeModulesDir, pkgName);
+  const symlinkDir = dirname(symlinkPath);
+  const relativeTarget = relative(symlinkDir, target);
+
+  try {
+    const existingTarget = await fs.readlink(symlinkPath);
+    if (existingTarget === relativeTarget) {
+      // Symlink is already the expected value, so do nothing
+      return;
+    } else {
+      // If a symlink already exists then delete it if the target doesn't match
+      await fs.unlink(symlinkPath);
+    }
+  } catch (err: any) {
+    // Ignore when path does not exist or is not a symlink
+    if (err.code !== 'ENOENT' && err.code !== 'EINVAL') {
+      throw err;
+    }
+  }
+
+  await fs.mkdir(symlinkDir, { recursive: true });
+  await fs.symlink(relativeTarget, symlinkPath);
+  debug(`Created symlink for "${pkgName}"`);
+}
+
+// Figure out if the `remix.config` file is using ESM syntax
+export async function isESM(remixConfigPath: string): Promise<boolean> {
+  switch (extname(remixConfigPath)) {
+    case '.mjs': {
+      return true;
+    }
+    case '.cjs': {
+      return false;
+    }
+    default: {
+      // from this node release then node supports ESM natively
+      if (semver.gte(process.version, '20.19.0')) {
+        const { type } = JSON.parse(
+          await fs.readFile(
+            join(dirname(remixConfigPath), 'package.json'),
+            'utf8'
+          )
+        ) as PackageJson;
+
+        // internally, remix uses `type: 'module'` for its config files
+        if (type === 'module') {
+          return true;
+        }
+      }
+
+      try {
+        require_(remixConfigPath);
+        return false;
+      } catch (err: any) {
+        return err.code === 'ERR_REQUIRE_ESM';
+      }
+    }
+  }
+}
+
+export function hasScript(scriptName: string, pkg?: PackageJson) {
+  const scripts = pkg?.scripts || {};
+  return typeof scripts[scriptName] === 'string';
+}
+
+export async function getPackageVersion(
+  name: string,
+  dir: string,
+  base: string
+): Promise<string> {
+  const resolvedPath = require_.resolve(name, { paths: [dir] });
+  const pkgPath = await walkParentDirs({
+    base,
+    start: dirname(resolvedPath),
+    filename: 'package.json',
+  });
+  if (!pkgPath) {
+    throw new Error(`Failed to find \`package.json\` file for "${name}"`);
+  }
+  const { version } = JSON.parse(
+    await fs.readFile(pkgPath, 'utf8')
+  ) as PackageJson;
+  if (typeof version !== 'string') {
+    throw new Error(`Missing "version" field`);
+  }
+  return version;
+}
+
+export function logNftWarnings(warnings: Set<Error>, required?: string) {
+  for (const warning of warnings) {
+    const m = warning.message.match(/^Failed to resolve dependency "(.+)"/);
+    if (m) {
+      if (m[1] === required) {
+        throw new Error(
+          `Missing required "${required}" package. Please add it to your \`package.json\` file.`
+        );
+      } else {
+        console.warn(`WARN: ${m[0]}`);
+      }
+    } else {
+      debug(`Warning from trace: ${warning.message}`);
+    }
+  }
+}
+
+export function isVite(dir: string): boolean {
+  const viteConfig = findConfig(dir, 'vite.config', [
+    '.js',
+    '.ts',
+    '.mjs',
+    '.mts',
+  ]);
+  if (!viteConfig) return false;
+
+  // `remix.config` should only exist for non-Vite Remix projects
+  const remixConfig = findConfig(dir, 'remix.config');
+  if (!remixConfig) return true;
+
+  // `remix.config` and `vite.config` exist, so check a couple other ways
+
+  // Is `vite:build` found in the `package.json` "build" script?
+  const pkg: PackageJson = JSON.parse(
+    readFileSync(join(dir, 'package.json'), 'utf8')
+  );
+  if (pkg.scripts?.build && /\bvite:build\b/.test(pkg.scripts.build)) {
+    return true;
+  }
+
+  // Is `@remix-run/dev` package found in `vite.config`?
+  const viteConfigContents = readFileSync(viteConfig, 'utf8');
+  if (/['"]@remix-run\/dev['"]/.test(viteConfigContents)) {
+    return true;
+  }
+
+  // If none of those conditions matched, then treat it as a legacy project
+  return false;
 }

@@ -1,11 +1,12 @@
-blank_issues_enabled: true
+blank_issues_enabled: false
+
 contact_links:
-  - name: Bug Report
-    url: https://vercel.com/support/request
-    about: Report a bug using the Vercel support form
-  - name: Feature Request
-    url: https://github.com/orgs/vercel/discussions/new?category=ideas
+  - name: Vercel Platform Bug Report
+    url: https://vercel.com/help
+    about: Reach out to our support team
+  - name: Vercel Platform Feature Request
+    url: https://community.vercel.com
     about: Share ideas for new features
   - name: Ask a Question
-    url: https://github.com/orgs/vercel/discussions/new?category=help
+    url: https://community.vercel.com
     about: Ask the community for help

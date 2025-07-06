@@ -27,7 +27,23 @@ async function* postDeployment(
 }> {
   const debug = createDebug(clientOptions.debug);
   const preparedFiles = prepareFiles(files, clientOptions);
-  const apiDeployments = getApiDeploymentsUrl(deploymentOptions);
+  const apiDeployments = getApiDeploymentsUrl();
+
+  if (deploymentOptions?.builds && !deploymentOptions.functions) {
+    clientOptions.skipAutoDetectionConfirmation = true;
+  }
+
+  // Preview deployments are the default - no need to set `target`
+  if (deploymentOptions.target === 'preview') {
+    deploymentOptions.target = undefined;
+  }
+
+  // "production" environment need to use `target`,
+  // otherwise use `customEnvironmentSlugOrId` for a Custom Environment
+  if (deploymentOptions.target && deploymentOptions.target !== 'production') {
+    deploymentOptions.customEnvironmentSlugOrId = deploymentOptions.target;
+    deploymentOptions.target = undefined;
+  }
 
   debug('Sending deployment creation API request');
   try {
@@ -50,7 +66,12 @@ async function* postDeployment(
       }
     );
 
-    const deployment = await response.json();
+    let deployment = undefined;
+    try {
+      deployment = await response.json();
+    } catch (error) {
+      throw new Error('Invalid JSON response');
+    }
 
     if (clientOptions.debug) {
       // Wrapped because there is no need to

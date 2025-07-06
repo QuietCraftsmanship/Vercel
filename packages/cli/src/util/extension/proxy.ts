@@ -7,11 +7,9 @@ import {
 } from '@edge-runtime/node-utils';
 import type { Server } from 'http';
 import type Client from '../client';
+import output from '../../output-manager';
 
-const toHeaders = buildToHeaders({
-  // @ts-expect-error - `node-fetch` Headers is missing `getAll()`
-  Headers,
-});
+const toHeaders = buildToHeaders({ Headers });
 
 export function createProxy(client: Client): Server {
   return createServer(async (req, res) => {
@@ -27,14 +25,10 @@ export function createProxy(client: Client): Server {
         json: false,
       });
       res.statusCode = fetchRes.status;
-      mergeIntoServerResponse(
-        // @ts-expect-error - `node-fetch` Headers is missing `getAll()`
-        toOutgoingHeaders(fetchRes.headers),
-        res
-      );
+      mergeIntoServerResponse(toOutgoingHeaders(fetchRes.headers), res);
       fetchRes.body.pipe(res);
     } catch (err: unknown) {
-      client.output.prettyError(err);
+      output.prettyError(err);
       if (!res.headersSent) {
         res.statusCode = 500;
         res.end('Unexpected error during API call');

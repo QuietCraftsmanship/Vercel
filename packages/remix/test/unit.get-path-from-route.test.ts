@@ -1,5 +1,6 @@
+import { describe, it, expect } from 'vitest';
 import { getPathFromRoute } from '../src/utils';
-import type { RouteManifest } from '@remix-run/dev/dist/config/routes';
+import type { RouteManifest } from '../src/types';
 
 describe('getPathFromRoute()', () => {
   const routes: RouteManifest = {
@@ -112,10 +113,32 @@ describe('getPathFromRoute()', () => {
       parentId: 'root',
       file: 'routes/admin.(lol).tsx',
     },
+    manual: {
+      path: '/',
+      index: true,
+      caseSensitive: undefined,
+      id: 'manual',
+      parentId: 'root',
+      file: 'manual.tsx',
+    },
+
+    'layouts/app-layout': {
+      id: 'layouts/app-layout',
+      parentId: 'root',
+      file: './layouts/app-layout.tsx',
+    },
+    'routes/home': {
+      id: 'routes/home',
+      parentId: 'layouts/app-layout',
+      file: './routes/home.tsx',
+      path: '/',
+      index: true,
+    },
   };
 
   it.each([
     { id: 'root', expected: { path: 'index', rePath: '/index' } },
+    { id: 'manual', expected: { path: 'index', rePath: '/index' } },
     { id: 'routes/__pathless', expected: { path: '', rePath: '/' } },
     { id: 'routes/index', expected: { path: 'index', rePath: '/index' } },
     {
@@ -167,6 +190,10 @@ describe('getPathFromRoute()', () => {
     {
       id: 'routes/admin.(lol)',
       expected: { path: 'admin/(lol)', rePath: '/admin/(lol)?' },
+    },
+    {
+      id: 'routes/home',
+      expected: { path: 'index', rePath: '/index' },
     },
   ])('should return `$expected` for "$id" route', ({ id, expected }) => {
     const route = routes[id];

@@ -1,108 +1,77 @@
-import chalk from 'chalk';
-import Client from '../../util/client';
-import getArgs from '../../util/get-args';
-import logo from '../../util/output/logo';
+import type Client from '../../util/client';
+import { parseArguments } from '../../util/get-args';
 import cmd from '../../util/output/cmd';
-import { getPkgName } from '../../util/pkg-name';
 import { ensureLink } from '../../util/link/ensure-link';
 import { ensureRepoLink } from '../../util/link/repo';
+import { help } from '../help';
+import { linkCommand } from './command';
+import { getFlagsSpecification } from '../../util/get-flags-specification';
+import { printError } from '../../util/error';
+import output from '../../output-manager';
+import { LinkTelemetryClient } from '../../util/telemetry/commands/link';
 
-const help = () => {
-  console.log(`
-  ${chalk.bold(`${logo} ${getPkgName()} link`)} [options]
+export default async function link(client: Client) {
+  let parsedArgs = null;
 
-  ${chalk.dim('Options:')}
+  const flagsSpecification = getFlagsSpecification(linkCommand.options);
 
-    -h, --help                     Output usage information
-    -r, --repo                     Link multiple projects based on Git repository (alpha)
-    -A ${chalk.bold.underline('FILE')}, --local-config=${chalk.bold.underline(
-    'FILE'
-  )}   Path to the local ${'`vercel.json`'} file
-    -Q ${chalk.bold.underline('DIR')}, --global-config=${chalk.bold.underline(
-    'DIR'
-  )}    Path to the global ${'`.vercel`'} directory
-    -d, --debug                    Debug mode [off]
-    --no-color                     No color mode [off]
-    -t ${chalk.bold.underline('TOKEN')}, --token=${chalk.bold.underline(
-    'TOKEN'
-  )}        Login token
-    -p ${chalk.bold.underline('NAME')}, --project=${chalk.bold.underline(
-    'NAME'
-  )}        Project name
-    -y, --yes                      Skip questions when setting up new project using default scope and settings
+  // Parse CLI args
+  try {
+    parsedArgs = parseArguments(client.argv.slice(2), flagsSpecification);
+  } catch (error) {
+    printError(error);
+    return 1;
+  }
 
-  ${chalk.dim('Examples:')}
-
-  ${chalk.gray('–')} Link current directory to a Vercel Project
-
-      ${chalk.cyan(`$ ${getPkgName()} link`)}
-
-  ${chalk.gray(
-    '–'
-  )} Link current directory with default options and skip questions
-
-      ${chalk.cyan(`$ ${getPkgName()} link --yes`)}
-
-  ${chalk.gray('–')} Link a specific directory to a Vercel Project
-
-      ${chalk.cyan(`$ ${getPkgName()} link --cwd /path/to/project`)}
-
-  ${chalk.gray('–')} ${chalk.yellow(
-    '(alpha)'
-  )} Link to the current Git repository, allowing for multiple
-    Vercel Projects to be linked simultaneously (useful for monorepos)
-
-      ${chalk.cyan(`$ ${getPkgName()} link --repo`)}
-`);
-};
-
-export default async function main(client: Client) {
-  const argv = getArgs(client.argv.slice(2), {
-    '--yes': Boolean,
-    '-y': '--yes',
-    '--project': String,
-    '-p': '--project',
-    '--repo': Boolean,
-    '-r': '--repo',
-
-    // deprecated
-    '--confirm': Boolean,
-    '-c': '--confirm',
+  const telemetry = new LinkTelemetryClient({
+    opts: {
+      store: client.telemetryEventStore,
+    },
   });
 
-  if (argv['--help']) {
-    help();
+  if (parsedArgs.flags['--help']) {
+    telemetry.trackCliFlagHelp('link');
+    output.print(help(linkCommand, { columns: client.stderr.columns }));
     return 2;
   }
 
-  if ('--confirm' in argv) {
-    client.output.warn('`--confirm` is deprecated, please use `--yes` instead');
-    argv['--yes'] = argv['--confirm'];
+  telemetry.trackCliFlagRepo(parsedArgs.flags['--repo']);
+  telemetry.trackCliFlagYes(parsedArgs.flags['--yes']);
+  telemetry.trackCliOptionProject(parsedArgs.flags['--project']);
+
+  if ('--confirm' in parsedArgs.flags) {
+    telemetry.trackCliFlagConfirm(parsedArgs.flags['--confirm']);
+    output.warn('`--confirm` is deprecated, please use `--yes` instead');
+    parsedArgs.flags['--yes'] = parsedArgs.flags['--confirm'];
   }
 
-  const yes = !!argv['--yes'];
+  const yes = !!parsedArgs.flags['--yes'];
 
-  let cwd = argv._[1];
+  let cwd = parsedArgs.args[1];
   if (cwd) {
-    client.output.warn(
+    telemetry.trackCliArgumentCwd();
+    output.warn(
       `The ${cmd('vc link <directory>')} syntax is deprecated, please use ${cmd(
         `vc link --cwd ${cwd}`
       )} instead`
     );
   } else {
-    cwd = process.cwd();
+    cwd = client.cwd;
   }
 
-  if (argv['--repo']) {
-    client.output.warn(
-      `The ${cmd('--repo')} flag is in alpha, please report issues`
-    );
-    await ensureRepoLink(client, cwd, yes);
+  if (parsedArgs.flags['--repo']) {
+    output.warn(`The ${cmd('--repo')} flag is in alpha, please report issues`);
+    try {
+      await ensureRepoLink(client, cwd, { yes, overwrite: true });
+    } catch (err) {
+      output.prettyError(err);
+      return 1;
+    }
   } else {
     const link = await ensureLink('link', client, cwd, {
       autoConfirm: yes,
       forceDelete: true,
-      projectName: argv['--project'],
+      projectName: parsedArgs.flags['--project'],
       successEmoji: 'success',
     });
 

@@ -178,7 +178,7 @@ export async function startDevServer(options: StartDevServerOptions) {
 
 ### Execution Context
 
-- Runtimes are executed in a Linux container that closely matches the Servereless Function runtime environment.
+- Runtimes are executed in a Linux container that closely matches the Serverless Function runtime environment.
 - The Runtime code is executed using Node.js version **12.x**.
 - A brand new sandbox is created for each deployment, for security reasons.
 - The sandbox is cleaned up between executions to ensure no lingering temporary files are shared from build to build.
@@ -385,16 +385,15 @@ This is a [class](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Refere
 
 This is an abstract enumeration type that is implemented by one of the following possible `String` values:
 
+- `nodejs20.x`
 - `nodejs18.x`
-- `nodejs16.x`
-- `nodejs14.x`
-- `go1.x`
 - `java11`
 - `python3.9`
 - `dotnet6`
 - `dotnetcore3.1`
 - `ruby2.7`
 - `provided.al2`
+- `provided.al2023`
 
 ## `@vercel/build-utils` Helper Functions
 
