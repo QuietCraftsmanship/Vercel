@@ -7,8 +7,38 @@ import { defaultProject, useProject } from '../../../mocks/project';
 import { client } from '../../../mocks/client';
 
 import { parseSpacedTableRow } from '../../../helpers/parse-table';
+import assert from 'node:assert';
 
 describe('list', () => {
+  describe('invalid argument', () => {
+    it('errors', async () => {
+      useUser();
+      client.setArgv('project', 'list', 'balderdash');
+      const exitCode = await projects(client);
+
+      expect(exitCode).toEqual(2);
+      await expect(client.stderr).toOutput('Invalid number of arguments');
+    });
+  });
+
+  describe('--help', () => {
+    it('tracks telemetry', async () => {
+      const command = 'project';
+      const subcommand = 'list';
+
+      client.setArgv(command, subcommand, '--help');
+      const exitCodePromise = projects(client);
+      await expect(exitCodePromise).resolves.toEqual(2);
+
+      expect(client.telemetryEventStore).toHaveTelemetryEvents([
+        {
+          key: 'flag:help',
+          value: `${command}:${subcommand}`,
+        },
+      ]);
+    });
+  });
+
   describe('--update-required', () => {
     it('should track flag', async () => {
       useUser();
@@ -85,6 +115,7 @@ describe('list', () => {
       'Project Name',
       'Latest Production URL',
       'Updated',
+      'Node Version',
     ]);
 
     line = await lines.next();
@@ -96,11 +127,12 @@ describe('list', () => {
   it('should list projects when there is no production deployment', async () => {
     const user = useUser();
     useTeams('team_dummy');
+    assert(defaultProject.targets?.production);
     const project = useProject({
       ...defaultProject,
       targets: {
         production: {
-          ...defaultProject!.targets!.production,
+          ...defaultProject.targets.production,
           alias: [],
         },
       },
@@ -127,6 +159,7 @@ describe('list', () => {
       'Project Name',
       'Latest Production URL',
       'Updated',
+      'Node Version',
     ]);
 
     line = await lines.next();

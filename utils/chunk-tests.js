@@ -7,10 +7,10 @@ const runnersMap = new Map([
     'vitest-unit',
     {
       min: 1,
-      max: 1,
+      max: 2,
       testScript: 'vitest-run',
       runners: ['ubuntu-latest', 'macos-14', 'windows-latest'],
-      nodeVersions: ['16', '18', '20', '22'],
+      nodeVersions: ['18', '20', '22'],
     },
   ],
   [
@@ -20,6 +20,16 @@ const runnersMap = new Map([
       max: 7,
       testScript: 'vitest-run',
       runners: ['ubuntu-latest'],
+    },
+  ],
+  [
+    'vitest-e2e-node-20',
+    {
+      min: 1,
+      max: 7,
+      testScript: 'vitest-run',
+      runners: ['ubuntu-latest'],
+      nodeVersions: ['20'],
     },
   ],
   [
@@ -43,17 +53,6 @@ const runnersMap = new Map([
       runners: ['ubuntu-latest'],
       testScript: 'test',
       nodeVersions: ['18'],
-    },
-  ],
-  [
-    'test-next-local-legacy',
-    {
-      min: 1,
-      max: 5,
-      runners: ['ubuntu-latest'],
-
-      testScript: 'test',
-      nodeVersions: ['16'],
     },
   ],
   [
@@ -146,7 +145,7 @@ async function getChunkedTests() {
           min,
           max,
           testScript,
-          nodeVersions = ['16'],
+          nodeVersions = ['18'],
         } = runnerOptions;
 
         const sortedTestPaths = testPaths.sort((a, b) => a.localeCompare(b));
@@ -230,6 +229,15 @@ function intoChunks(minChunks, maxChunks, arr) {
   for (let i = 0; i < maxChunks; i++) {
     chunks.push(arr.slice(i * chunkSize, (i + 1) * chunkSize));
   }
+
+  const indexOfTest = chunks[0].findIndex(
+    file => typeof file === 'string' && file.endsWith('index2.test.ts')
+  );
+  if (indexOfTest >= 0) {
+    const index2Test = chunks[0].splice(indexOfTest, 1);
+    chunks[1].push(index2Test[0]);
+  }
+
   return chunks.filter(x => x.length > 0);
 }
 

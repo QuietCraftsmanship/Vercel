@@ -6,7 +6,7 @@ import type {
   MetadataEntry,
   MetadataSchema,
   MetadataSchemaProperty,
-} from './types';
+} from '../../util/integration/types';
 
 // This is a set of all the UI controls that the metadata wizard supports.
 // For all options see https://vercel.com/docs/integrations/marketplace-product#metadata-schema
@@ -18,6 +18,19 @@ const supportedUIControls = new Set([
 ]);
 
 type Step = (client: Client) => Promise<MetadataEntry>;
+
+function createHiddenStep(key: string, schema: MetadataSchemaProperty) {
+  if (schema['ui:hidden'] !== true && schema['ui:hidden'] !== 'create') {
+    throw new Error(
+      `HiddenStep: Expected "ui:hidden" to have value 'true' or '"create"' for key "${key}", but was "${schema['ui:hidden']}"`
+    );
+  }
+
+  return async () => {
+    const value = schema.default;
+    return [key, value] as const;
+  };
+}
 
 function createInputStep(key: string, schema: MetadataSchemaProperty) {
   if (schema['ui:control'] !== 'input') {
@@ -137,6 +150,7 @@ export function createMetadataWizard(
   for (const [key, schema] of Object.entries(properties)) {
     try {
       if (isHidden(schema)) {
+        steps.push(createHiddenStep(key, schema));
         continue;
       }
 

@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import type { DNSRecordData } from '@vercel-internals/types';
-import confirm from '../input/confirm';
-import Client from '../client';
+import type Client from '../client';
+import output from '../../output-manager';
 
 const RECORD_TYPES = ['A', 'AAAA', 'ALIAS', 'CAA', 'CNAME', 'MX', 'SRV', 'TXT'];
 
@@ -12,7 +12,6 @@ export default async function getDNSData(
   if (data) {
     return data;
   }
-  const { output } = client;
 
   try {
     // first ask for type, branch from there
@@ -88,7 +87,7 @@ export default async function getDNSData(
 }
 
 async function verifyData(client: Client) {
-  return confirm(client, 'Is this correct?', false);
+  return client.input.confirm('Is this correct?', false);
 }
 
 async function getRecordName(client: Client, type: string) {

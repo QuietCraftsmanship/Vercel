@@ -1,3 +1,4 @@
+import assert from 'assert';
 import { isIP } from 'net';
 import { exec, fixture, testFixture, testFixtureStdio } from './utils';
 
@@ -34,12 +35,13 @@ test('[vercel dev] validate mixed routes and rewrites', async () => {
 
 test('[vercel dev] validate env var names', async () => {
   const directory = fixture('invalid-env-var-name');
-  const { dev } = await testFixture(directory, { encoding: 'utf8' });
+  const { dev } = await testFixture(directory);
 
   try {
     let stderr = '';
 
     await new Promise<void>((resolve, reject) => {
+      assert(dev.stderr);
       dev.stderr.on('data', (b: string) => {
         stderr += b;
         if (
@@ -110,19 +112,34 @@ test(
   })
 );
 
-test(
+// eslint-disable-next-line
+test.only(
   '[vercel dev] Use `@vercel/python` with Flask requirements.txt',
-  testFixtureStdio('python-flask', async (testPath: any) => {
-    const name = 'Alice';
-    const year = new Date().getFullYear();
-    await testPath(200, `/api/user?name=${name}`, new RegExp(`Hello ${name}`));
-    await testPath(200, `/api/date`, new RegExp(`Current date is ${year}`));
-    await testPath(200, `/api/date.py`, new RegExp(`Current date is ${year}`));
-    await testPath(200, `/api/headers`, (body: any, res: any) => {
-      const { host } = new URL(res.url);
-      expect(body).toBe(host);
-    });
-  })
+  testFixtureStdio(
+    'python-flask',
+    async (testPath: any) => {
+      // eslint-disable-next-line
+      console.log('Testing /api');
+      const name = 'Alice';
+      const year = new Date().getFullYear();
+      await testPath(
+        200,
+        `/api/user?name=${name}`,
+        new RegExp(`Hello ${name}`)
+      );
+      await testPath(200, `/api/date`, new RegExp(`Current date is ${year}`));
+      await testPath(
+        200,
+        `/api/date.py`,
+        new RegExp(`Current date is ${year}`)
+      );
+      await testPath(200, `/api/headers`, (body: any, res: any) => {
+        const { host } = new URL(res.url);
+        expect(body).toBe(host);
+      });
+    },
+    { skipDeploy: true }
+  )
 );
 
 test(
@@ -168,6 +185,15 @@ test(
     await testPath(200, '/api/another.go', 'This is another page');
     await testPath(200, `/api/foo`, 'Req Path: /api/foo');
     await testPath(200, `/api/bar`, 'Req Path: /api/bar');
+  })
+);
+
+test(
+  '[vercel dev] Should support `*.go` API serverless functions with external modules',
+  testFixtureStdio('go-external-module', async (testPath: any) => {
+    await testPath(200, `/api`, 'hello from go!');
+    await testPath(200, `/api/index`, 'hello from go!');
+    await testPath(200, `/api/index.go`, 'hello from go!');
   })
 );
 

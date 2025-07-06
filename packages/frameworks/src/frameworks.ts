@@ -239,6 +239,58 @@ export const frameworks = [
     getOutputDirName: async () => 'public',
   },
   {
+    name: 'React Router',
+    slug: 'react-router',
+    demo: 'https://react-router-v7-template.vercel.app',
+    logo: 'https://api-frameworks.vercel.sh/framework-logos/react-router.svg',
+    darkModeLogo:
+      'https://api-frameworks.vercel.sh/framework-logos/react-router-dark.svg',
+    tagline: 'Declarative routing for React',
+    description:
+      'A user-obsessed, standards-focused, multi-strategy router you can deploy anywhere.',
+    website: 'https://reactrouter.com',
+    sort: 7,
+    supersedes: ['hydrogen', 'vite'],
+    useRuntime: { src: 'package.json', use: '@vercel/remix-builder' },
+    detectors: {
+      some: [
+        {
+          path: 'vite.config.js',
+          matchContent: '@react-router/dev/vite',
+        },
+        {
+          path: 'vite.config.ts',
+          matchContent: '@react-router/dev/vite',
+        },
+        {
+          path: 'react-router.config.js',
+        },
+        {
+          path: 'react-router.config.ts',
+        },
+      ],
+    },
+    settings: {
+      installCommand: {
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
+      },
+      buildCommand: {
+        value: 'react-router build',
+        placeholder: '`npm run build` or `react-router build`',
+      },
+      devCommand: {
+        value: 'react-router dev',
+        placeholder: 'react-router dev',
+      },
+      outputDirectory: {
+        value: 'build',
+      },
+    },
+    dependency: 'react-router',
+    getOutputDirName: async () => 'build',
+  },
+  {
     name: 'Astro',
     slug: 'astro',
     demo: 'https://astro-template.vercel.app',
@@ -363,7 +415,7 @@ export const frameworks = [
     cachePattern: '.cache/**',
   },
   {
-    name: 'Docusaurus (v2)',
+    name: 'Docusaurus (v2+)',
     slug: 'docusaurus-2',
     demo: 'https://docusaurus-2-template.vercel.app',
     logo: 'https://api-frameworks.vercel.sh/framework-logos/docusaurus.svg',
@@ -1076,7 +1128,7 @@ export const frameworks = [
     getOutputDirName: async () => 'public',
   },
   {
-    name: 'SvelteKit (v1)',
+    name: 'SvelteKit',
     slug: 'sveltekit-1',
     demo: 'https://sveltekit-1-template.vercel.app',
     logo: 'https://api-frameworks.vercel.sh/framework-logos/svelte.svg',
@@ -1106,7 +1158,7 @@ export const frameworks = [
       },
       devCommand: {
         placeholder: 'vite dev',
-        value: 'vite dev',
+        value: 'vite dev --port $PORT',
       },
       outputDirectory: {
         value: 'public',
@@ -1358,7 +1410,6 @@ export const frameworks = [
   {
     name: 'Saber',
     slug: 'saber',
-    demo: 'https://saber-template.vercel.app',
     logo: 'https://api-frameworks.vercel.sh/framework-logos/saber.svg',
     tagline:
       'Saber is a framework for building static sites in Vue.js that supports data from any source.',
@@ -1478,6 +1529,7 @@ export const frameworks = [
     website: 'https://nuxtjs.org',
     sort: 2,
     envPrefix: 'NUXT_ENV_',
+    supersedes: ['nitro'],
     detectors: {
       some: [
         {
@@ -1820,6 +1872,7 @@ export const frameworks = [
       'Vite is a new breed of frontend build tool that significantly improves the frontend development experience.',
     description: 'A Vue.js app, created with Vite.',
     website: 'https://vitejs.dev',
+    supersedes: ['ionic-react'],
     envPrefix: 'VITE_',
     detectors: {
       every: [
@@ -2158,6 +2211,37 @@ export const frameworks = [
       },
     },
     getOutputDirName: async () => 'storybook-static',
+  },
+  {
+    name: 'Nitro',
+    slug: 'nitro',
+    logo: 'https://api-frameworks.vercel.sh/framework-logos/nitro.svg',
+    demo: 'https://nitro-template.vercel.app',
+    tagline: 'Nitro is a next generation server toolkit.',
+    description:
+      'Nitro lets you create web servers that run on multiple platforms.',
+    website: 'https://nitro.build/',
+    detectors: {
+      every: [{ matchPackage: 'nitropack' }],
+    },
+    settings: {
+      installCommand: {
+        placeholder:
+          '`yarn install`, `pnpm install`, `npm install`, or `bun install`',
+      },
+      buildCommand: {
+        placeholder: '`npm run build` or `nitro build`',
+        value: 'nitro build',
+      },
+      devCommand: {
+        value: 'nitro dev',
+      },
+      outputDirectory: {
+        value: 'dist',
+      },
+    },
+    dependency: 'nitropack',
+    getOutputDirName: () => Promise<string>,
   },
   {
     name: 'Other',

@@ -1,6 +1,18 @@
 import { TelemetryClient } from '../..';
+import type { TelemetryMethods } from '../../types';
+import type { projectCommand } from '../../../../commands/project/command';
 
-export class ProjectTelemetryClient extends TelemetryClient {
+export class ProjectTelemetryClient
+  extends TelemetryClient
+  implements TelemetryMethods<typeof projectCommand>
+{
+  trackCliSubcommandInspect(actual: string) {
+    this.trackCliSubcommand({
+      subcommand: 'inspect',
+      value: actual,
+    });
+  }
+
   trackCliSubcommandList(actual: string) {
     this.trackCliSubcommand({
       subcommand: 'list',
@@ -15,9 +27,9 @@ export class ProjectTelemetryClient extends TelemetryClient {
     });
   }
 
-  trackCliSubcommandRm(actual: string) {
+  trackCliSubcommandRemove(actual: string) {
     this.trackCliSubcommand({
-      subcommand: 'rm',
+      subcommand: 'remove',
       value: actual,
     });
   }

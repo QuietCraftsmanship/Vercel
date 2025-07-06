@@ -1,5 +1,43 @@
 # @vercel/hydrogen
 
+## 1.2.2
+
+### Patch Changes
+
+- Updated dependencies [[`6c8e763ab63c79e12c7d5455fd79cf158f43cc77`](https://github.com/vercel/vercel/commit/6c8e763ab63c79e12c7d5455fd79cf158f43cc77)]:
+  - @vercel/static-config@3.1.1
+
+## 1.2.1
+
+### Patch Changes
+
+- Updated dependencies [[`0d86d9c3fa61ae91f0ed4ffe4c0c97655411468f`](https://github.com/vercel/vercel/commit/0d86d9c3fa61ae91f0ed4ffe4c0c97655411468f)]:
+  - @vercel/static-config@3.1.0
+
+## 1.2.0
+
+### Minor Changes
+
+- Detect v9 pnpm lock files as pnpm 10 for new projects ([#13072](https://github.com/vercel/vercel/pull/13072))
+
+## 1.1.0
+
+### Minor Changes
+
+- Add .yarn/cache to build cache ([#12961](https://github.com/vercel/vercel/pull/12961))
+
+## 1.0.11
+
+### Patch Changes
+
+- Revert build utils refactor ([#12818](https://github.com/vercel/vercel/pull/12818))
+
+## 1.0.10
+
+### Patch Changes
+
+- Refactor build-util usage to reuse detected lockfile ([#12813](https://github.com/vercel/vercel/pull/12813))
+
 ## 1.0.9
 
 ### Patch Changes

@@ -1,19 +1,26 @@
 import chalk from 'chalk';
-import type Client from '../client';
-import type { CustomEnvironment } from '@vercel-internals/types';
+import output from '../../output-manager';
+import type {
+  CustomEnvironment,
+  CustomEnvironmentType,
+} from '@vercel-internals/types';
+import { STANDARD_ENVIRONMENTS } from './standard-environments';
+import title from 'title';
 
 export function formatEnvironment(
-  client: Client,
   orgSlug: string,
   projectSlug: string,
-  environment: Pick<CustomEnvironment, 'name' | 'id'>
+  environment: Pick<CustomEnvironment, 'slug' | 'id'>
 ) {
-  const { output } = client;
   const projectUrl = `https://vercel.com/${orgSlug}/${projectSlug}`;
-  const boldName = chalk.bold(environment.name);
+  const boldName = chalk.bold(
+    STANDARD_ENVIRONMENTS.includes(environment.slug as CustomEnvironmentType)
+      ? title(environment.slug)
+      : environment.slug
+  );
   return output.link(
     boldName,
-    `${projectUrl}/settings/environments/${environment.id}`,
+    `${projectUrl}/settings/environments/${environment.slug}`,
     { fallback: () => boldName, color: false }
   );
 }

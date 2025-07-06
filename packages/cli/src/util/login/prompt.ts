@@ -1,13 +1,15 @@
-import Client from '../client';
+import type Client from '../client';
 import error from '../output/error';
 import listInput from '../input/list';
 import { getCommandName } from '../pkg-name';
-import { LoginResult, SAMLError } from './types';
+import type { LoginResult, SAMLError } from './types';
 import doSamlLogin from './saml';
 import doEmailLogin from './email';
 import doGithubLogin from './github';
+import doGoogleLogin from './google';
 import doGitlabLogin from './gitlab';
 import doBitbucketLogin from './bitbucket';
+import output from '../../output-manager';
 
 export default async function prompt(
   client: Client,
@@ -19,6 +21,7 @@ export default async function prompt(
 
   const choices = [
     { name: 'Continue with GitHub', value: 'github', short: 'github' },
+    { name: 'Continue with Google', value: 'google', short: 'google' },
     { name: 'Continue with GitLab', value: 'gitlab', short: 'gitlab' },
     { name: 'Continue with Bitbucket', value: 'bitbucket', short: 'bitbucket' },
     { name: 'Continue with Email', value: 'email', short: 'email' },
@@ -36,7 +39,9 @@ export default async function prompt(
     choices,
   });
 
-  if (choice === 'github') {
+  if (choice === 'google') {
+    result = await doGoogleLogin(client, outOfBand, ssoUserId);
+  } else if (choice === 'github') {
     result = await doGithubLogin(client, outOfBand, ssoUserId);
   } else if (choice === 'gitlab') {
     result = await doGitlabLogin(client, outOfBand, ssoUserId);
@@ -64,7 +69,7 @@ export async function readInput(
     try {
       input = await client.input.text({ message });
     } catch (err: any) {
-      client.output.print('\n'); // \n
+      output.print('\n'); // \n
 
       if (err.isTtyError) {
         throw new Error(

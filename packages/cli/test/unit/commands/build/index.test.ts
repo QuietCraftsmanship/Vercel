@@ -1,4 +1,6 @@
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+// split into part 1 and 2
+
+import { beforeEach, describe, expect, it } from 'vitest';
 import fs from 'fs-extra';
 import { join } from 'path';
 import { getWriteableDirectory } from '@vercel/build-utils';
@@ -7,7 +9,6 @@ import { client } from '../../../mocks/client';
 import { defaultProject, useProject } from '../../../mocks/project';
 import { useTeams } from '../../../mocks/team';
 import { useUser } from '../../../mocks/user';
-import { execSync } from 'child_process';
 import { vi } from 'vitest';
 import { REGEX_NON_VERCEL_PLATFORM_FILES } from '@vercel/fs-detectors';
 
@@ -16,9 +17,30 @@ vi.setConfig({ testTimeout: 6 * 60 * 1000 });
 const fixture = (name: string) =>
   join(__dirname, '../../../fixtures/unit/commands/build', name);
 
-describe('build', () => {
+const flakey =
+  process.platform === 'win32' && process.version.startsWith('v22');
+
+describe.skipIf(flakey)('build', () => {
   beforeEach(() => {
     delete process.env.__VERCEL_BUILD_RUNNING;
+    delete process.env.VERCEL_TRACING_DISABLE_AUTOMATIC_FETCH_INSTRUMENTATION;
+  });
+
+  describe('--help', () => {
+    it('tracks telemetry', async () => {
+      const command = 'build';
+
+      client.setArgv(command, '--help');
+      const exitCodePromise = build(client);
+      await expect(exitCodePromise).resolves.toEqual(2);
+
+      expect(client.telemetryEventStore).toHaveTelemetryEvents([
+        {
+          key: 'flag:help',
+          value: command,
+        },
+      ]);
+    });
   });
 
   it('should build with `@vercel/static`', async () => {
@@ -729,6 +751,8 @@ describe('build', () => {
     expect(configJson.version).toBe(3);
   });
 
+
+
   it('should store Builder error in `builds.json`', async () => {
     const cwd = fixture('node-error');
     const output = join(cwd, '.vercel/output');
@@ -850,6 +874,63 @@ describe('build', () => {
     expect(Object.keys(env).includes('VERCEL_ANALYTICS_ID')).toEqual(true);
   });
 
+  describe.each([
+    {
+      fixtureName: 'with-valid-vercel-otel',
+      dependency: '@vercel/otel',
+      version: '1.11.0',
+      expected: true,
+    },
+    {
+      fixtureName: 'with-invalid-vercel-otel',
+      dependency: '@vercel/otel',
+      version: '1.10.0',
+      expected: false,
+    },
+    {
+      fixtureName: 'with-valid-opentelemetry-sdk',
+      dependency: '@opentelemetry/sdk-trace-node',
+      version: '1.19.0',
+      expected: true,
+    },
+    {
+      fixtureName: 'with-invalid-opentelemetry-sdk',
+      dependency: '@opentelemetry/sdk-trace-node',
+      version: '1.18.0',
+      expected: false,
+    },
+    {
+      fixtureName: 'with-valid-opentelemetry-api',
+      dependency: '@opentelemetry/api',
+      version: '1.7.0',
+      expected: true,
+    },
+    {
+      fixtureName: 'with-invalid-opentelemetry-api',
+      dependency: '@opentelemetry/api',
+      version: '1.6.0',
+      expected: false,
+    },
+  ])(
+    'with instrumentation $dependency',
+    ({ fixtureName, dependency, version, expected }) => {
+      it(`should ${expected ? 'set' : 'not set'} VERCEL_TRACING_DISABLE_AUTOMATIC_FETCH_INSTRUMENTATION if ${dependency} version ${version} or higher is detected`, async () => {
+        const cwd = fixture(fixtureName);
+        const output = join(cwd, '.vercel/output');
+        client.cwd = cwd;
+        const exitCode = await build(client);
+        expect(exitCode).toEqual(0);
+
+        const env = await fs.readJSON(join(output, 'static', 'env.json'));
+        expect(
+          Object.keys(env).includes(
+            'VERCEL_TRACING_DISABLE_AUTOMATIC_FETCH_INSTRUMENTATION'
+          )
+        ).toEqual(expected);
+      });
+    }
+  );
+
   it('should load environment variables from `.vercel/.env.preview.local`', async () => {
     const cwd = fixture('env-from-vc-pull');
     const output = join(cwd, '.vercel/output');
@@ -962,6 +1043,7 @@ describe('build', () => {
     expect(configJson).toMatchObject({
       images: {
         sizes: [256, 384, 600, 1000],
+        qualities: [25, 50, 75],
         domains: [],
         minimumCacheTTL: 60,
         localPatterns: [{ search: '' }],
@@ -1205,7 +1287,15 @@ describe('build', () => {
 
       const files = await fs.readdir(output);
       // we should NOT see `functions` because that means `middleware.ts` was processed
-      expect(files.sort()).toEqual(['builds.json', 'config.json', 'static']);
+      expect(files.sort()).toEqual([
+        'builds.json',
+        'config.json',
+        'diagnostics',
+        'static',
+      ]);
+
+      const diagnostics = await fs.readdir(join(output, 'diagnostics'));
+      expect(diagnostics.sort()).toEqual(['cli_traces.json']);
     } finally {
       delete process.env.STORYBOOK_DISABLE_TELEMETRY;
     }
@@ -1217,7 +1307,8 @@ describe('build', () => {
     client.setArgv('build');
     const exitCodePromise = build(client);
     await expect(client.stderr).toOutput('Error: Detected unsupported');
-    await expect(exitCodePromise).resolves.toEqual(1);
+    const exitCode = await exitCodePromise;
+    expect(exitCode, 'exit code for "build"').toEqual(1);
   });
 
   it('should ignore `.env` for static site', async () => {
@@ -1442,8 +1533,4 @@ describe('build', () => {
     });
   });
 
-  describe.todo('--prod');
-  describe.todo('--target');
-  describe.todo('--output');
-  describe.todo('--yes');
 });

@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { isErrnoException, isError, errorToString } from '@vercel/error-utils';
 
 try {
@@ -41,9 +40,8 @@ import getLatestVersion from './util/get-latest-version';
 import { URL } from 'url';
 import * as Sentry from '@sentry/node';
 import hp from './util/humanize-path';
-import commands from './commands';
+import { commands } from './commands';
 import pkg from './util/pkg';
-import { Output } from './util/output';
 import cmd from './util/output/cmd';
 import param from './util/output/param';
 import highlight from './util/output/highlight';
@@ -51,7 +49,7 @@ import { parseArguments } from './util/get-args';
 import getUser from './util/get-user';
 import getTeams from './util/teams/get-teams';
 import Client from './util/client';
-import { handleError } from './util/error';
+import { printError } from './util/error';
 import reportError from './util/report-error';
 import getConfig from './util/get-config';
 import * as configFiles from './util/config/files';
@@ -67,7 +65,7 @@ import getUpdateCommand from './util/get-update-command';
 import { getCommandName, getTitleName } from './util/pkg-name';
 import doLoginPrompt from './util/login/prompt';
 import type { AuthConfig, GlobalConfig } from '@vercel-internals/types';
-import { VercelConfig } from '@vercel/client';
+import type { VercelConfig } from '@vercel/client';
 import { ProxyAgent } from 'proxy-agent';
 import box from './util/output/box';
 import { execExtension } from './util/extension/exec';
@@ -75,6 +73,10 @@ import { TelemetryEventStore } from './util/telemetry';
 import { RootTelemetryClient } from './util/telemetry/root';
 import { help } from './args';
 import { updateCurrentTeamAfterLogin } from './util/login/update-current-team-after-login';
+import { checkTelemetryStatus } from './util/telemetry/check-status';
+import output from './output-manager';
+import { checkGuidanceStatus } from './util/guidance/check-status';
+import { determineAgent } from './util/determine-agent';
 
 const VERCEL_DIR = getGlobalPathConfig();
 const VERCEL_CONFIG_PATH = configFiles.getConfigFilePath();
@@ -99,9 +101,9 @@ Sentry.init({
 });
 
 let client: Client;
-let output: Output;
+
 let { isTTY } = process.stdout;
-let debug: (s: string) => void = () => {};
+
 let apiUrl = 'https://api.vercel.com';
 
 const main = async () => {
@@ -119,26 +121,20 @@ const main = async () => {
       { '--version': Boolean, '-v': '--version' },
       { permissive: true }
     );
+    const isDebugging = parsedArgs.flags['--debug'];
+    const isNoColor = parsedArgs.flags['--no-color'];
+    output.initialize({
+      debug: isDebugging,
+      noColor: isNoColor,
+    });
   } catch (err: unknown) {
-    handleError(err);
+    printError(err);
     return 1;
   }
 
-  const isDebugging = parsedArgs.flags['--debug'];
-  const isNoColor = parsedArgs.flags['--no-color'];
-
-  output = new Output(process.stderr, {
-    debug: isDebugging,
-    noColor: isNoColor,
-  });
-
-  debug = output.debug;
-
   const localConfigPath = parsedArgs.flags['--local-config'];
-  let localConfig: VercelConfig | Error | undefined = await getConfig(
-    output,
-    localConfigPath
-  );
+  let localConfig: VercelConfig | Error | undefined =
+    await getConfig(localConfigPath);
 
   if (localConfig instanceof ERRORS.CantParseJSONFile) {
     output.error(`Couldn't parse JSON file ${localConfig.meta.file}.`);
@@ -218,7 +214,7 @@ const main = async () => {
     if (isErrnoException(err) && err.code === 'ENOENT') {
       config = defaultGlobalConfig;
       try {
-        configFiles.writeToConfigFile(output, config);
+        configFiles.writeToConfigFile(config);
       } catch (err: unknown) {
         output.error(
           `An unexpected error occurred while trying to save the config to "${hp(
@@ -244,7 +240,7 @@ const main = async () => {
     if (isErrnoException(err) && err.code === 'ENOENT') {
       authConfig = defaultAuthConfig;
       try {
-        configFiles.writeToAuthConfigFile(output, authConfig);
+        configFiles.writeToAuthConfigFile(authConfig);
       } catch (err: unknown) {
         output.error(
           `An unexpected error occurred while trying to write the auth config to "${hp(
@@ -265,17 +261,27 @@ const main = async () => {
 
   const telemetryEventStore = new TelemetryEventStore({
     isDebug: process.env.VERCEL_TELEMETRY_DEBUG === '1',
-    output,
     config: config.telemetry,
   });
+
+  checkTelemetryStatus({
+    config,
+  });
+
+  if (process.env.FF_GUIDANCE_MODE) {
+    checkGuidanceStatus({
+      config,
+    });
+  }
 
   const telemetry = new RootTelemetryClient({
     opts: {
       store: telemetryEventStore,
-      output,
     },
   });
 
+  const agent = await determineAgent();
+  telemetry.trackAgenticUse(agent);
   telemetry.trackCPUs();
   telemetry.trackPlatform();
   telemetry.trackArch();
@@ -311,7 +317,6 @@ const main = async () => {
     stdin: process.stdin,
     stdout: process.stdout,
     stderr: output.stream,
-    output,
     config,
     authConfig,
     localConfig,
@@ -352,24 +357,38 @@ const main = async () => {
     }
 
     if (subcommandExists) {
-      debug(`user supplied known subcommand: "${targetOrSubcommand}"`);
+      output.debug(`user supplied known subcommand: "${targetOrSubcommand}"`);
       subcommand = targetOrSubcommand;
       userSuppliedSubCommand = targetOrSubcommand;
     } else {
-      debug('user supplied a possible target for deployment or an extension');
+      output.debug(
+        'user supplied a possible target for deployment or an extension'
+      );
     }
   } else {
-    debug('user supplied no target, defaulting to deploy');
+    output.debug('user supplied no target, defaulting to deploy');
     subcommand = 'deploy';
     defaultDeploy = true;
   }
 
   if (subcommand === 'help') {
+    telemetry.trackCliCommandHelp('help');
     subcommand = subSubCommand || 'deploy';
     client.argv.push('-h');
   }
 
-  const subcommandsWithoutToken = ['login', 'logout', 'help', 'init', 'build'];
+  const subcommandsWithoutToken = [
+    'login',
+    'logout',
+    'help',
+    'init',
+    'build',
+    'telemetry',
+  ];
+
+  if (process.env.FF_GUIDANCE_MODE) {
+    subcommandsWithoutToken.push('guidance');
+  }
 
   // Prompt for login if there is no current token
   if (
@@ -382,21 +401,26 @@ const main = async () => {
   ) {
     if (isTTY) {
       output.log(`No existing credentials found. Please log in:`);
-      const result = await doLoginPrompt(client);
+      try {
+        const result = await doLoginPrompt(client);
 
-      // The login function failed, so it returned an exit code
-      if (typeof result === 'number') {
-        return result;
+        // The login function failed, so it returned an exit code
+        if (typeof result === 'number') {
+          return result;
+        }
+
+        // When `result` is a string it's the user's authentication token.
+        // It needs to be saved to the configuration file.
+        client.authConfig.token = result.token;
+
+        await updateCurrentTeamAfterLogin(client, result.teamId);
+
+        configFiles.writeToAuthConfigFile(client.authConfig);
+        configFiles.writeToConfigFile(client.config);
+      } catch (error) {
+        printError(error);
+        return 1;
       }
-
-      // When `result` is a string it's the user's authentication token.
-      // It needs to be saved to the configuration file.
-      client.authConfig.token = result.token;
-
-      await updateCurrentTeamAfterLogin(client, output, result.teamId);
-
-      configFiles.writeToAuthConfigFile(output, client.authConfig);
-      configFiles.writeToConfigFile(output, client.config);
 
       output.debug(`Saved credentials in "${hp(VERCEL_DIR)}"`);
     } else {
@@ -553,8 +577,6 @@ const main = async () => {
     }
   }
 
-  client.telemetryEventStore.updateTeamId(client.config.currentTeam);
-
   let exitCode;
 
   try {
@@ -570,7 +592,7 @@ const main = async () => {
           parsedArgs.args.slice(3),
           cwd
         );
-        telemetry.trackCliExtension(targetCommand);
+        telemetry.trackCliExtension();
       } catch (err: unknown) {
         if (isErrnoException(err) && err.code === 'ENOENT') {
           // Fall back to `vc deploy <dir>`
@@ -594,9 +616,17 @@ const main = async () => {
           telemetry.trackCliCommandBisect(userSuppliedSubCommand);
           func = require('./commands/bisect').default;
           break;
+        case 'blob':
+          telemetry.trackCliCommandBlob(userSuppliedSubCommand);
+          func = require('./commands/blob').default;
+          break;
         case 'build':
           telemetry.trackCliCommandBuild(userSuppliedSubCommand);
           func = require('./commands/build').default;
+          break;
+        case 'cache':
+          telemetry.trackCliCommandCache(userSuppliedSubCommand);
+          func = require('./commands/cache').default;
           break;
         case 'certs':
           telemetry.trackCliCommandCerts(userSuppliedSubCommand);
@@ -627,6 +657,15 @@ const main = async () => {
           telemetry.trackCliCommandGit(userSuppliedSubCommand);
           func = require('./commands/git').default;
           break;
+        case 'guidance':
+          if (process.env.FF_GUIDANCE_MODE) {
+            telemetry.trackCliCommandGuidance(userSuppliedSubCommand);
+            func = require('./commands/guidance').default;
+            break;
+          } else {
+            func = null;
+            break;
+          }
         case 'init':
           telemetry.trackCliCommandInit(userSuppliedSubCommand);
           func = require('./commands/init').default;
@@ -642,6 +681,10 @@ const main = async () => {
         case 'integration':
           telemetry.trackCliCommandIntegration(userSuppliedSubCommand);
           func = require('./commands/integration').default;
+          break;
+        case 'integration-resource':
+          telemetry.trackCliCommandIntegrationResource(userSuppliedSubCommand);
+          func = require('./commands/integration-resource').default;
           break;
         case 'link':
           telemetry.trackCliCommandLink(userSuppliedSubCommand);
@@ -662,6 +705,10 @@ const main = async () => {
         case 'logout':
           telemetry.trackCliCommandLogout(userSuppliedSubCommand);
           func = require('./commands/logout').default;
+          break;
+        case 'microfrontends':
+          telemetry.trackCliCommandMicrofrontends(userSuppliedSubCommand);
+          func = require('./commands/microfrontends').default;
           break;
         case 'project':
           telemetry.trackCliCommandProject(userSuppliedSubCommand);
@@ -686,6 +733,12 @@ const main = async () => {
         case 'rollback':
           telemetry.trackCliCommandRollback(userSuppliedSubCommand);
           func = require('./commands/rollback').default;
+          break;
+        case 'rr':
+        case 'release':
+        case 'rolling-release':
+          telemetry.trackCliCommandRollingRelease(userSuppliedSubCommand);
+          func = require('./commands/rolling-release').default;
           break;
         case 'target':
           telemetry.trackCliCommandTarget(userSuppliedSubCommand);
@@ -788,14 +841,13 @@ const main = async () => {
     return 1;
   }
 
-  // specifically don't await this, we want to fire and forget
-  telemetryEventStore.save();
+  telemetryEventStore.updateTeamId(client.config.currentTeam);
+  await telemetryEventStore.save();
+
   return exitCode;
 };
 
 const handleRejection = async (err: any) => {
-  debug('handling rejection');
-
   if (err) {
     if (err instanceof Error) {
       await handleUnexpected(err);
@@ -815,7 +867,7 @@ const handleUnexpected = async (err: Error) => {
 
   // We do not want to render errors about Sentry not being reachable
   if (message.includes('sentry') && message.includes('ENOTFOUND')) {
-    debug(`Sentry is not reachable: ${err}`);
+    output.debug(`Sentry is not reachable: ${err}`);
     return;
   }
 
@@ -835,7 +887,6 @@ main()
       // Check if an update is available. If so, `latest` will contain a string
       // of the latest version, otherwise `undefined`.
       const latest = getLatestVersion({
-        output,
         pkg,
       });
       if (latest) {

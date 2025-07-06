@@ -1,5 +1,218 @@
 # @vercel/build-utils
 
+## 10.6.4
+
+### Patch Changes
+
+- simplify experimental triggers ([#13527](https://github.com/vercel/vercel/pull/13527))
+
+## 10.6.3
+
+### Patch Changes
+
+- make POST method required ([#13518](https://github.com/vercel/vercel/pull/13518))
+
+- Update more handling for experimentalTriggers ([#13517](https://github.com/vercel/vercel/pull/13517))
+
+## 10.6.2
+
+### Patch Changes
+
+- Add CloudEventTrigger support for Lambda functions ([#13503](https://github.com/vercel/vercel/pull/13503))
+
+## 10.6.1
+
+### Patch Changes
+
+- next package uses @vercel/routing-utils HasField rather than redefining & stricter validation. ([#13409](https://github.com/vercel/vercel/pull/13409))
+
+- Make architecture a defined property on Lambda classes to apply when creating ([#13398](https://github.com/vercel/vercel/pull/13398))
+
+- [env-vars] expose VERCEL_PROJECT_ID as NEXT_PUBLIC_VERCEL_PROJECT_ID ([#13431](https://github.com/vercel/vercel/pull/13431))
+
+## 10.6.0
+
+### Minor Changes
+
+- provide a more verbose error when package.json is not valid ([#13346](https://github.com/vercel/vercel/pull/13346))
+
+- Allow configuring functions `architecture` via the `vercel.json` configuration ([#13344](https://github.com/vercel/vercel/pull/13344))
+
+## 10.5.1
+
+### Patch Changes
+
+- Display warning when yarn dynamic require error may happen ([#13143](https://github.com/vercel/vercel/pull/13143))
+
+- [build-utils] increase max memory limit ([#13162](https://github.com/vercel/vercel/pull/13162))
+
+## 10.5.0
+
+### Minor Changes
+
+- Disable yarn global cache before installs so build cache caches deps ([#13144](https://github.com/vercel/vercel/pull/13144))
+
+## 10.4.0
+
+### Minor Changes
+
+- Expose pnpm6 within the detected package manager path for future versions of the build container ([#13132](https://github.com/vercel/vercel/pull/13132))
+
+## 10.3.2
+
+### Patch Changes
+
+- Add support for expire values in Next.js prerender manifest ([#13087](https://github.com/vercel/vercel/pull/13087))
+
+- Detect yarn version from lockfile version ([#13118](https://github.com/vercel/vercel/pull/13118))
+
+## 10.3.1
+
+### Patch Changes
+
+- Parse yarn.lock file version ([#13114](https://github.com/vercel/vercel/pull/13114))
+
+- [env-vars] expose VERCEL_DEPLOYMENT_ID as NEXT_PUBLIC_VERCEL_DEPLOYMENT_ID ([#13115](https://github.com/vercel/vercel/pull/13115))
+
+- Fix vitest-e2e glob to include integration.test.ts ([#13097](https://github.com/vercel/vercel/pull/13097))
+
+## 10.3.0
+
+### Minor Changes
+
+- Delay pnpm@10 preferred date ([#13100](https://github.com/vercel/vercel/pull/13100))
+
+### Patch Changes
+
+- Type-check tests ([#13096](https://github.com/vercel/vercel/pull/13096))
+
+## 10.2.0
+
+### Minor Changes
+
+- Detect v9 pnpm lock files as pnpm 10 for new projects ([#13072](https://github.com/vercel/vercel/pull/13072))
+
+### Patch Changes
+
+- Improve build log messages surrounding pnpm 10 ([#13088](https://github.com/vercel/vercel/pull/13088))
+
+- [build-utils] extract checkIfAlreadyInstalled helper to clarify intent ([#13060](https://github.com/vercel/vercel/pull/13060))
+
+- Allow pnpm 10 to use package.json#packageManager without an engines error ([#13083](https://github.com/vercel/vercel/pull/13083))
+
+## 10.1.0
+
+### Minor Changes
+
+- [envs] add `VERCEL_TARGET_ENV` to prefixed env vars ([#13069](https://github.com/vercel/vercel/pull/13069))
+
+## 10.0.1
+
+### Patch Changes
+
+- [build-utils] Move `runNpmInstallSema` closer to where it's used ([#13061](https://github.com/vercel/vercel/pull/13061))
+
+- [build-utils] extract getInstallCommandForPackageManager to module scope ([#13058](https://github.com/vercel/vercel/pull/13058))
+
+- [build-utils] remove redundant sema release ([#13059](https://github.com/vercel/vercel/pull/13059))
+
+- Revert support pnpm 10 ([#13064](https://github.com/vercel/vercel/pull/13064))
+
+## 10.0.0
+
+### Major Changes
+
+- Detect v9 pnpm lockfiles as pnpm 10 generated ([#12852](https://github.com/vercel/vercel/pull/12852))
+
+## 9.3.1
+
+### Patch Changes
+
+- [build-utils] extract install command specific logic into helper ([#13049](https://github.com/vercel/vercel/pull/13049))
+
+- [build-utils] remove dead node 16 check ([#13047](https://github.com/vercel/vercel/pull/13047))
+
+## 9.3.0
+
+### Minor Changes
+
+- Support process tracing ([#12894](https://github.com/vercel/vercel/pull/12894))
+
+## 9.2.1
+
+### Patch Changes
+
+- Add tracer utility to @vercel/build-utils ([#13013](https://github.com/vercel/vercel/pull/13013))
+
+## 9.2.0
+
+### Minor Changes
+
+- Add .yarn/cache to build cache ([#12961](https://github.com/vercel/vercel/pull/12961))
+
+## 9.1.1
+
+### Patch Changes
+
+- [cli] shift node 16 deprecation date to 2025-02-03 ([#12981](https://github.com/vercel/vercel/pull/12981))
+
+## 9.1.0
+
+### Minor Changes
+
+- Add `useWebApi` property to `NodejsLambda` class ([#12873](https://github.com/vercel/vercel/pull/12873))
+
+- [build-utils] convert NodeVersion to class and add state getter ([#12883](https://github.com/vercel/vercel/pull/12883))
+  [ruby] convert RubyVersion to class and add state getter
+
+## 9.0.1
+
+### Patch Changes
+
+- Revert build utils refactor ([#12818](https://github.com/vercel/vercel/pull/12818))
+
+## 9.0.0
+
+### Major Changes
+
+- Change getPathOverrideForPackageManager() to use detectedLockfile argument ([#12813](https://github.com/vercel/vercel/pull/12813))
+
+### Patch Changes
+
+- Refactor build-util usage to reuse detected lockfile ([#12813](https://github.com/vercel/vercel/pull/12813))
+
+- add support for `images.qualities` ([#12813](https://github.com/vercel/vercel/pull/12813))
+
+## 8.8.0
+
+### Minor Changes
+
+- Add bun detection using bun.lock ([#12740](https://github.com/vercel/vercel/pull/12740))
+
+## 8.7.0
+
+### Minor Changes
+
+- Support splitting archive deployments in parts. ([#12671](https://github.com/vercel/vercel/pull/12671))
+
+## 8.6.0
+
+### Minor Changes
+
+- Add support for `NOW_EPHEMERAL_FILES_S3_URL`, `NOW_FILES_CLOUDFRONT_URL` and `NOW_FILES_S3_URL` environment variables ([#12643](https://github.com/vercel/vercel/pull/12643))
+
+## 8.5.0
+
+### Minor Changes
+
+- Remove `VERCEL_ALLOW_NODEJS22` env var check ([#12614](https://github.com/vercel/vercel/pull/12614))
+
+## 8.4.12
+
+### Patch Changes
+
+- Support allowHeader from Next.js for filtering request headers during revalidation ([#12420](https://github.com/vercel/vercel/pull/12420))
+
 ## 8.4.11
 
 ### Patch Changes

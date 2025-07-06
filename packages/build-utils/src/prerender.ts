@@ -3,11 +3,13 @@ import { Lambda } from './lambda';
 
 interface PrerenderOptions {
   expiration: number | false;
+  staleExpiration?: number;
   lambda?: Lambda;
   fallback: File | null;
   group?: number;
   bypassToken?: string | null /* optional to be non-breaking change */;
   allowQuery?: string[];
+  allowHeader?: string[];
   initialHeaders?: Record<string, string>;
   initialStatus?: number;
   passQuery?: boolean;
@@ -19,12 +21,23 @@ interface PrerenderOptions {
 
 export class Prerender {
   public type: 'Prerender';
+  /**
+   * `expiration` is `revalidate` in Next.js terms, and `s-maxage` in
+   * `cache-control` terms.
+   */
   public expiration: number | false;
+  /**
+   * `staleExpiration` is `expire` in Next.js terms, and
+   * `stale-while-revalidate` + `s-maxage` in `cache-control` terms. It's
+   * expected to be undefined if `expiration` is `false`.
+   */
+  public staleExpiration?: number;
   public lambda?: Lambda;
   public fallback: File | null;
   public group?: number;
   public bypassToken: string | null;
   public allowQuery?: string[];
+  public allowHeader?: string[];
   public initialHeaders?: Record<string, string>;
   public initialStatus?: number;
   public passQuery?: boolean;
@@ -35,11 +48,13 @@ export class Prerender {
 
   constructor({
     expiration,
+    staleExpiration,
     lambda,
     fallback,
     group,
     bypassToken,
     allowQuery,
+    allowHeader,
     initialHeaders,
     initialStatus,
     passQuery,
@@ -50,6 +65,7 @@ export class Prerender {
   }: PrerenderOptions) {
     this.type = 'Prerender';
     this.expiration = expiration;
+    this.staleExpiration = staleExpiration;
     this.sourcePath = sourcePath;
 
     this.lambda = lambda;
@@ -101,10 +117,14 @@ export class Prerender {
         experimentalBypassFor.some(
           field =>
             typeof field !== 'object' ||
-            // host doesn't need a key
-            (field.type !== 'host' && typeof field.key !== 'string') ||
             typeof field.type !== 'string' ||
-            (field.value !== undefined && typeof field.value !== 'string')
+            (field.type === 'host' && 'key' in field) ||
+            (field.type !== 'host' && typeof field.key !== 'string') ||
+            (field.value !== undefined &&
+              typeof field.value !== 'string' &&
+              (typeof field.value !== 'object' ||
+                field.value === null ||
+                Array.isArray(field.value)))
         )
       ) {
         throw new Error(
@@ -158,6 +178,20 @@ export class Prerender {
         );
       }
       this.allowQuery = allowQuery;
+    }
+
+    if (allowHeader !== undefined) {
+      if (!Array.isArray(allowHeader)) {
+        throw new Error(
+          'The `allowHeader` argument for `Prerender` must be Array.'
+        );
+      }
+      if (!allowHeader.every(q => typeof q === 'string')) {
+        throw new Error(
+          'The `allowHeader` argument for `Prerender` must be Array of strings.'
+        );
+      }
+      this.allowHeader = allowHeader;
     }
 
     if (experimentalStreamingLambdaPath !== undefined) {

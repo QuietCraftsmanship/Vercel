@@ -14,46 +14,61 @@ import type {
   IntegrationInstallation,
   IntegrationProduct,
   Metadata,
-} from './types';
+} from '../../util/integration/types';
 import { createMetadataWizard, type MetadataWizard } from './wizard';
 import { provisionStoreResource } from '../../util/integration/provision-store-resource';
-import { connectResourceToProject } from '../../util/integration/connect-resource-to-project';
+import { connectResourceToProject } from '../../util/integration-resource/connect-resource-to-project';
 import { fetchBillingPlans } from '../../util/integration/fetch-billing-plans';
 import { fetchInstallations } from '../../util/integration/fetch-installations';
 import { fetchIntegration } from '../../util/integration/fetch-integration';
+import output from '../../output-manager';
+import { IntegrationAddTelemetryClient } from '../../util/telemetry/commands/integration/add';
+import { createAuthorization } from '../../util/integration/create-authorization';
+import sleep from '../../util/sleep';
+import { fetchAuthorization } from '../../util/integration/fetch-authorization';
 
 export async function add(client: Client, args: string[]) {
+  const telemetry = new IntegrationAddTelemetryClient({
+    opts: {
+      store: client.telemetryEventStore,
+    },
+  });
+
   if (args.length > 1) {
-    client.output.error('Cannot install more than one integration at a time');
+    output.error('Cannot install more than one integration at a time');
     return 1;
   }
 
   const integrationSlug = args[0];
 
   if (!integrationSlug) {
-    client.output.error('You must pass an integration slug');
+    output.error('You must pass an integration slug');
     return 1;
   }
 
   const { contextName, team } = await getScope(client);
 
   if (!team) {
-    client.output.error('Team not found');
+    output.error('Team not found');
     return 1;
   }
 
   let integration: Integration | undefined;
+  let knownIntegrationSlug = false;
   try {
     integration = await fetchIntegration(client, integrationSlug);
+    knownIntegrationSlug = true;
   } catch (error) {
-    client.output.error(
+    output.error(
       `Failed to get integration "${integrationSlug}": ${(error as Error).message}`
     );
     return 1;
+  } finally {
+    telemetry.trackCliArgumentName(integrationSlug, knownIntegrationSlug);
   }
 
   if (!integration.products) {
-    client.output.error(
+    output.error(
       `Integration "${integrationSlug}" is not a Marketplace integration`
     );
     return 1;
@@ -65,12 +80,12 @@ export async function add(client: Client, args: string[]) {
   ]);
 
   if (productResult.status === 'rejected' || !productResult.value) {
-    client.output.error('Product not found');
+    output.error('Product not found');
     return 1;
   }
 
   if (installationsResult.status === 'rejected') {
-    client.output.error(
+    output.error(
       `Failed to get integration installations: ${installationsResult.reason}`
     );
     return 1;
@@ -85,7 +100,7 @@ export async function add(client: Client, args: string[]) {
   );
 
   if (teamInstallations.length > 1) {
-    client.output.error(
+    output.error(
       `Found more than one existing installation of ${integration.name}. Please contact Vercel Support at https://vercel.com/help`
     );
     return 1;
@@ -95,24 +110,19 @@ export async function add(client: Client, args: string[]) {
     | IntegrationInstallation
     | undefined;
 
-  client.output.log(
+  output.log(
     `Installing ${chalk.bold(product.name)} by ${chalk.bold(integration.name)} under ${chalk.bold(contextName)}`
   );
 
   const metadataSchema = product.metadataSchema;
   const metadataWizard = createMetadataWizard(metadataSchema);
 
-  // At the time of writing, we don't support native integrations besides storage products.
-  // However, when we introduce new categories, we avoid breaking this version of the CLI by linking all
-  // non-storage categories to the dashboard.
-  const isStorageProduct = product.type === 'storage';
-
   // The provisioning via cli is possible when
   // 1. The integration was installed once (terms have been accepted)
   // 2. The provider-defined metadata is supported (does not use metadata expressions etc.)
-  // 3. The product type is supported
+  // 3. The selected billing plan is supported (handled at time of billing plan selection)
   const provisionResourceViaCLIIsSupported =
-    installation && metadataWizard.isSupported && isStorageProduct;
+    installation && metadataWizard.isSupported;
 
   if (!provisionResourceViaCLIIsSupported) {
     const projectLink = await getOptionalLinkedProject(client);
@@ -121,15 +131,15 @@ export async function add(client: Client, args: string[]) {
       return projectLink.exitCode;
     }
 
-    const openInWeb = await client.input.confirm({
-      message: !installation
+    const openInWeb = await client.input.confirm(
+      !installation
         ? 'Terms have not been accepted. Open Vercel Dashboard?'
         : 'This resource must be provisioned through the Web UI. Open Vercel Dashboard?',
-    });
+      true
+    );
 
     if (openInWeb) {
-      privisionResourceViaWebUI(
-        client,
+      provisionResourceViaWebUI(
         team.id,
         integration.id,
         product.id,
@@ -140,8 +150,9 @@ export async function add(client: Client, args: string[]) {
     return 0;
   }
 
-  return provisionResourceViaCLI(
+  return await provisionResourceViaCLI(
     client,
+    team.id,
     integration,
     installation,
     product,
@@ -156,9 +167,10 @@ async function getOptionalLinkedProject(client: Client) {
     return;
   }
 
-  const shouldLinkToProject = await client.input.confirm({
-    message: 'Do you want to link this resource to the current project?',
-  });
+  const shouldLinkToProject = await client.input.confirm(
+    'Do you want to link this resource to the current project?',
+    true
+  );
 
   if (!shouldLinkToProject) {
     return;
@@ -171,8 +183,7 @@ async function getOptionalLinkedProject(client: Client) {
   return { status: 'success', project: linkedProject.project };
 }
 
-function privisionResourceViaWebUI(
-  client: Client,
+function provisionResourceViaWebUI(
   teamId: string,
   integrationId: string,
   productId: string,
@@ -186,14 +197,13 @@ function privisionResourceViaWebUI(
     url.searchParams.set('projectId', projectId);
   }
   url.searchParams.set('cmd', 'add');
-  client.output.print(
-    'Opening the Vercel Dashboard to continue the installation...'
-  );
+  output.print('Opening the Vercel Dashboard to continue the installation...');
   open(url.href);
 }
 
 async function provisionResourceViaCLI(
   client: Client,
+  teamId: string,
   integration: Integration,
   installation: IntegrationInstallation,
   product: IntegrationProduct,
@@ -215,24 +225,47 @@ async function provisionResourceViaCLI(
     );
     billingPlans = billingPlansResponse.plans;
   } catch (error) {
-    client.output.error(
-      `Failed to get billing plans: ${(error as Error).message}`
-    );
+    output.error(`Failed to get billing plans: ${(error as Error).message}`);
     return 1;
   }
 
   const enabledBillingPlans = billingPlans.filter(plan => !plan.disabled);
 
   if (!enabledBillingPlans.length) {
-    client.output.error('No billing plans available');
+    output.error('No billing plans available');
     return 1;
   }
 
   const billingPlan = await selectBillingPlan(client, enabledBillingPlans);
 
   if (!billingPlan) {
-    client.output.error('No billing plan selected');
+    output.error('No billing plan selected');
     return 1;
+  }
+
+  if (billingPlan.type !== 'subscription') {
+    // offer to open the web UI to continue the resource provisioning
+    const projectLink = await getOptionalLinkedProject(client);
+
+    if (projectLink?.status === 'error') {
+      return projectLink.exitCode;
+    }
+
+    const openInWeb = await client.input.confirm(
+      'You have selected a plan that cannot be provisioned through the CLI. Open Vercel Dashboard?',
+      true
+    );
+
+    if (openInWeb) {
+      provisionResourceViaWebUI(
+        teamId,
+        integration.id,
+        product.id,
+        projectLink?.project?.id
+      );
+    }
+
+    return 0;
   }
 
   const confirmed = await confirmProductSelection(
@@ -247,14 +280,29 @@ async function provisionResourceViaCLI(
     return 1;
   }
 
-  return provisionStorageProduct(
-    client,
-    product,
-    installation,
-    name,
-    metadata,
-    billingPlan
-  );
+  try {
+    const authorizationId = await getAuthorizationId(
+      client,
+      teamId,
+      installation,
+      product,
+      metadata,
+      billingPlan
+    );
+
+    return await provisionStorageProduct(
+      client,
+      product,
+      installation,
+      name,
+      metadata,
+      billingPlan,
+      authorizationId
+    );
+  } catch (error) {
+    output.error((error as Error).message);
+    return 1;
+  }
 }
 
 async function selectProduct(client: Client, integration: Integration) {
@@ -286,6 +334,12 @@ async function selectBillingPlan(client: Client, billingPlans: BillingPlan[]) {
     separator: true,
     choices: billingPlans.map(plan => {
       const body = [plan.description];
+
+      if (plan.type !== 'subscription') {
+        body.push(
+          'This plan is not subscription-based. Selecting it will prompt you to use the Vercel Dashboard.'
+        );
+      }
 
       if (plan.details?.length) {
         const detailsTable = formatTable(
@@ -348,20 +402,106 @@ async function confirmProductSelection(
   metadata: Metadata,
   billingPlan: BillingPlan
 ) {
-  client.output.print('Selected product:\n');
-  client.output.print(`${chalk.dim(`- ${chalk.bold('Name:')} ${name}`)}\n`);
+  output.print('Selected product:\n');
+  output.print(`${chalk.dim(`- ${chalk.bold('Name:')} ${name}`)}\n`);
   for (const [key, value] of Object.entries(metadata)) {
-    client.output.print(
+    output.print(
       `${chalk.dim(`- ${chalk.bold(`${product.metadataSchema.properties[key]['ui:label']}:`)} ${value}`)}\n`
     );
   }
-  client.output.print(
+  output.print(
     `${chalk.dim(`- ${chalk.bold('Plan:')} ${billingPlan.name}`)}\n`
   );
 
-  return client.input.confirm({
-    message: 'Confirm selection?',
-  });
+  return client.input.confirm('Confirm selection?', true);
+}
+
+async function getAuthorizationId(
+  client: Client,
+  teamId: string,
+  installation: IntegrationInstallation,
+  product: IntegrationProduct,
+  metadata: Metadata,
+  billingPlan: BillingPlan
+): Promise<string> {
+  output.spinner('Validating payment...', 250);
+  const originalAuthorizationState = await createAuthorization(
+    client,
+    installation.integrationId,
+    installation.id,
+    product.id,
+    billingPlan.id,
+    metadata
+  );
+
+  if (!originalAuthorizationState.authorization) {
+    output.stopSpinner();
+    throw new Error(
+      'Failed to get an authorization state. If the problem persists, please contact support.'
+    );
+  }
+
+  let authorization = originalAuthorizationState.authorization;
+
+  while (authorization.status === 'pending') {
+    await sleep(200);
+    authorization = await fetchAuthorization(
+      client,
+      originalAuthorizationState.authorization.id
+    );
+  }
+
+  output.stopSpinner();
+
+  if (authorization.status === 'succeeded') {
+    output.log('Validation complete.');
+    return authorization.id;
+  }
+
+  if (authorization.status === 'failed') {
+    throw new Error(
+      'Payment validation failed. Please change your payment method via the web UI and try again.'
+    );
+  }
+
+  output.spinner(
+    'Payment validation requires manual action. Please complete the steps in your browser...'
+  );
+
+  handleManualVerificationAction(
+    teamId,
+    originalAuthorizationState.authorization.id
+  );
+
+  while (authorization.status !== 'succeeded') {
+    await sleep(200);
+    authorization = await fetchAuthorization(
+      client,
+      originalAuthorizationState.authorization.id
+    );
+    if (authorization.status === 'failed') {
+      throw new Error(
+        'Payment validation failed. Please change your payment method via the web UI and try again.'
+      );
+    }
+  }
+
+  output.stopSpinner();
+
+  output.log('Validation complete.');
+  return authorization.id;
+}
+
+function handleManualVerificationAction(
+  teamId: string,
+  authorizationId: string
+) {
+  const url = new URL('/api/marketplace/cli', 'https://vercel.com');
+  url.searchParams.set('teamId', teamId);
+  url.searchParams.set('authorizationId', authorizationId);
+  url.searchParams.set('cmd', 'authorize');
+  output.print('Opening the Vercel Dashboard to continue the installation...');
+  open(url.href);
 }
 
 async function provisionStorageProduct(
@@ -370,9 +510,10 @@ async function provisionStorageProduct(
   installation: IntegrationInstallation,
   name: string,
   metadata: Metadata,
-  billingPlan: BillingPlan
+  billingPlan: BillingPlan,
+  authorizationId: string
 ) {
-  client.output.spinner('Provisioning resource...');
+  output.spinner('Provisioning resource...');
   let storeId: string;
   try {
     const result = await provisionStoreResource(
@@ -381,18 +522,19 @@ async function provisionStorageProduct(
       product.id,
       billingPlan.id,
       name,
-      metadata
+      metadata,
+      authorizationId
     );
     storeId = result.store.id;
   } catch (error) {
-    client.output.error(
+    output.error(
       `Failed to provision ${product.name}: ${(error as Error).message}`
     );
     return 1;
   } finally {
-    client.output.stopSpinner();
+    output.stopSpinner();
   }
-  client.output.log(`${product.name} successfully provisioned`);
+  output.log(`${product.name} successfully provisioned`);
 
   const projectLink = await getOptionalLinkedProject(client);
 
@@ -415,7 +557,7 @@ async function provisionStorageProduct(
     ],
   });
 
-  client.output.spinner(
+  output.spinner(
     `Connecting ${chalk.bold(name)} to ${chalk.bold(project.name)}...`
   );
   try {
@@ -426,14 +568,14 @@ async function provisionStorageProduct(
       environments
     );
   } catch (error) {
-    client.output.error(
+    output.error(
       `Failed to connect store to project: ${(error as Error).message}`
     );
     return 1;
   } finally {
-    client.output.stopSpinner();
+    output.stopSpinner();
   }
-  client.output.log(
+  output.log(
     `${chalk.bold(name)} successfully connected to ${chalk.bold(project.name)}
 
 ${indent(`Run ${cmd(`${packageName} env pull`)} to update the environment variables`, 4)}`

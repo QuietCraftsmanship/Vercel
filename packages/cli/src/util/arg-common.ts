@@ -82,6 +82,7 @@ export const yesOption = {
   shorthand: 'y',
   type: Boolean,
   deprecated: false,
+  description: 'Accept default value for all prompts',
 } as const;
 
 export const nextOption = {
@@ -89,6 +90,8 @@ export const nextOption = {
   shorthand: 'N',
   type: Number,
   deprecated: false,
+  description: 'Show next page of results',
+  argument: 'MS',
 } as const;
 
 export const confirmOption = {
@@ -103,6 +106,8 @@ export const limitOption = {
   shorthand: null,
   type: Number,
   deprecated: false,
+  description: 'Number of results to return per page (default: 20, max: 100)',
+  argument: 'NUMBER',
 } as const;
 
 export const forceOption = {

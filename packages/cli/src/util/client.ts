@@ -6,17 +6,24 @@ import input from '@inquirer/input';
 import select from '@inquirer/select';
 import { EventEmitter } from 'events';
 import { URL } from 'url';
-import { VercelConfig } from '@vercel/client';
-import retry, { RetryFunction, Options as RetryOptions } from 'async-retry';
-import fetch, { BodyInit, Headers, RequestInit, Response } from 'node-fetch';
+import type { VercelConfig } from '@vercel/client';
+import retry, {
+  type RetryFunction,
+  type Options as RetryOptions,
+} from 'async-retry';
+import fetch, {
+  type BodyInit,
+  Headers,
+  type RequestInit,
+  type Response,
+} from 'node-fetch';
 import ua from './ua';
-import { Output } from './output/create-output';
 import responseError from './response-error';
 import printIndications from './print-indications';
 import reauthenticate from './login/reauthenticate';
-import { SAMLError } from './login/types';
-import { writeToAuthConfigFile } from './config/files';
-import { TelemetryEventStore } from './telemetry';
+import type { SAMLError } from './login/types';
+import { writeToAuthConfigFile, writeToConfigFile } from './config/files';
+import type { TelemetryEventStore } from './telemetry';
 import type {
   AuthConfig,
   GlobalConfig,
@@ -24,6 +31,7 @@ import type {
   Stdio,
   ReadableTTY,
   PaginationOptions,
+  OAuthAuthConfig,
 } from '@vercel-internals/types';
 import { sharedPromise } from './promise';
 import { APIError } from './errors-ts';
@@ -31,6 +39,8 @@ import { normalizeError } from '@vercel/error-utils';
 import type { Agent } from 'http';
 import sleep from './sleep';
 import type * as tty from 'tty';
+import output from '../output-manager';
+import { processTokenResponse, refreshTokenRequest } from './oauth';
 
 const isSAMLError = (v: any): v is SAMLError => {
   return v && v.saml;
@@ -48,7 +58,6 @@ export interface ClientOptions extends Stdio {
   argv: string[];
   apiUrl: string;
   authConfig: AuthConfig;
-  output: Output;
   config: GlobalConfig;
   localConfig?: VercelConfig;
   localConfigPath?: string;
@@ -60,6 +69,22 @@ export const isJSONObject = (v: any): v is JSONObject => {
   return v && typeof v == 'object' && v.constructor === Object;
 };
 
+export function isOAuthAuth(
+  authConfig: AuthConfig
+): authConfig is OAuthAuthConfig {
+  return authConfig.type === 'oauth';
+}
+
+export function isValidAccessToken(authConfig: OAuthAuthConfig): boolean {
+  return 'token' in authConfig && (authConfig.expiresAt ?? 0) >= Date.now();
+}
+
+export function hasRefreshToken(
+  authConfig: OAuthAuthConfig
+): authConfig is OAuthAuthConfig & { refreshToken: string } {
+  return 'refreshToken' in authConfig;
+}
+
 export default class Client extends EventEmitter implements Stdio {
   argv: string[];
   apiUrl: string;
@@ -67,7 +92,6 @@ export default class Client extends EventEmitter implements Stdio {
   stdin: ReadableTTY;
   stdout: tty.WriteStream;
   stderr: tty.WriteStream;
-  output: Output;
   config: GlobalConfig;
   agent?: Agent;
   localConfig?: VercelConfig;
@@ -85,7 +109,6 @@ export default class Client extends EventEmitter implements Stdio {
     this.stdin = opts.stdin;
     this.stdout = opts.stdout;
     this.stderr = opts.stderr;
-    this.output = opts.output;
     this.config = opts.config;
     this.localConfig = opts.localConfig;
     this.localConfigPath = opts.localConfigPath;
@@ -106,8 +129,11 @@ export default class Client extends EventEmitter implements Stdio {
         ),
       expand: (opts: Parameters<typeof expand>[0]) =>
         expand({ theme, ...opts }, { input: this.stdin, output: this.stderr }),
-      confirm: (opts: Parameters<typeof confirm>[0]) =>
-        confirm({ theme, ...opts }, { input: this.stdin, output: this.stderr }),
+      confirm: (message: string, default_value: boolean) =>
+        confirm(
+          { theme, message, default: default_value },
+          { input: this.stdin, output: this.stderr }
+        ),
       select: <T>(opts: Parameters<typeof select<T>>[0]) =>
         select<T>(
           { theme, ...opts },
@@ -124,7 +150,85 @@ export default class Client extends EventEmitter implements Stdio {
     });
   }
 
-  private _fetch(_url: string, opts: FetchOptions = {}) {
+  /**
+   * When the auth config is of type `OAuthAuthConfig`,
+   * this method silently tries to refresh the access_token if it is expired.
+   *
+   * If the refresh_token is also expired, it will not attempt to refresh it.
+   * If there is any error during the refresh process, it will not throw an error.
+   */
+  private async ensureAuthorized(): Promise<void> {
+    if (!isOAuthAuth(this.authConfig)) return;
+
+    const { authConfig } = this;
+
+    // If we have a valid access token, do nothing
+    if (isValidAccessToken(authConfig)) {
+      output.debug('Valid access token, skipping token refresh.');
+      return;
+    }
+
+    // If we don't have a refresh token, empty the auth config
+    // to force the user to re-authenticate
+    if (!hasRefreshToken(authConfig)) {
+      output.debug('No refresh token found, emptying auth config.');
+      this.emptyAuthConfig();
+      this.writeToAuthConfigFile();
+      return;
+    }
+
+    const tokenResponse = await refreshTokenRequest({
+      refresh_token: authConfig.refreshToken,
+    });
+
+    const [tokensError, tokens] = await processTokenResponse(tokenResponse);
+
+    // If we had an error, during the refresh process, empty the auth config
+    // to force the user to re-authenticate
+    if (tokensError) {
+      output.debug('Error refreshing token, emptying auth config.');
+      this.emptyAuthConfig();
+      this.writeToAuthConfigFile();
+      return;
+    }
+
+    this.updateAuthConfig({
+      type: 'oauth',
+      token: tokens.access_token,
+      expiresAt: Math.floor(Date.now() / 1000) + tokens.expires_in,
+    });
+
+    if (tokens.refresh_token) {
+      this.updateAuthConfig({ refreshToken: tokens.refresh_token });
+    }
+
+    this.writeToAuthConfigFile();
+    this.writeToConfigFile();
+
+    output.debug('Tokens refreshed successfully.');
+  }
+
+  updateConfig(config: Partial<GlobalConfig>) {
+    this.config = { ...this.config, ...config };
+  }
+
+  writeToConfigFile() {
+    writeToConfigFile(this.config);
+  }
+
+  updateAuthConfig(authConfig: Partial<AuthConfig>) {
+    this.authConfig = { ...this.authConfig, ...authConfig };
+  }
+
+  emptyAuthConfig() {
+    this.authConfig = {};
+  }
+
+  writeToAuthConfigFile() {
+    writeToAuthConfigFile(this.authConfig);
+  }
+
+  private async _fetch(_url: string, opts: FetchOptions = {}) {
     const url = new URL(_url, this.apiUrl);
 
     if (opts.accountId || opts.useCurrentTeam !== false) {
@@ -141,6 +245,9 @@ export default class Client extends EventEmitter implements Stdio {
 
     const headers = new Headers(opts.headers);
     headers.set('user-agent', ua);
+
+    await this.ensureAuthorized();
+
     if (this.authConfig.token) {
       headers.set('authorization', `Bearer ${this.authConfig.token}`);
     }
@@ -154,7 +261,7 @@ export default class Client extends EventEmitter implements Stdio {
     }
 
     const requestId = this.requestIdCounter++;
-    return this.output.time(
+    return output.time(
       res => {
         if (res) {
           return `#${requestId} ← ${res.status} ${
@@ -174,7 +281,7 @@ export default class Client extends EventEmitter implements Stdio {
     return this.retry(async bail => {
       const res = await this._fetch(url, opts);
 
-      printIndications(this, res);
+      printIndications(res);
 
       if (!res.ok) {
         const error = await responseError(res);
@@ -245,9 +352,9 @@ export default class Client extends EventEmitter implements Stdio {
 
     if (typeof result === 'number') {
       if (error instanceof APIError) {
-        this.output.prettyError(error);
+        output.prettyError(error);
       } else {
-        this.output.error(
+        output.error(
           `Failed to re-authenticate for ${bold(error.scope)} scope`
         );
       }
@@ -255,11 +362,11 @@ export default class Client extends EventEmitter implements Stdio {
     }
 
     this.authConfig.token = result.token;
-    writeToAuthConfigFile(this.output, this.authConfig);
+    writeToAuthConfigFile(this.authConfig);
   });
 
   _onRetry = (error: Error) => {
-    this.output.debug(`Retrying: ${error}\n${error.stack}`);
+    output.debug(`Retrying: ${error}\n${error.stack}`);
   };
 
   get cwd(): string {

@@ -1,5 +1,39 @@
 # @vercel/edge
 
+## 1.2.2
+
+### Patch Changes
+
+- This package was introduced to add helpful methods related to Edge Functions. ([#13381](https://github.com/vercel/vercel/pull/13381))
+
+  Nowadays, as much as Node.js and Edge support the same primitives, there is no necessity to continue maintaining a separate package.
+
+  We're going to use [@vercel/functions](https://github.com/vercel/vercel/tree/main/packages/functions) for all the runtimes!
+
+## 1.2.1
+
+### Patch Changes
+
+- fix missing reference to `@vercel/functions` by bundling ([#12831](https://github.com/vercel/vercel/pull/12831))
+
+## 1.2.0
+
+### Minor Changes
+
+- moved methods to @vercel/functions ([#12813](https://github.com/vercel/vercel/pull/12813))
+
+## 1.1.4
+
+### Patch Changes
+
+- [vercel/edge] add geolocation.postalCode ([#12755](https://github.com/vercel/vercel/pull/12755))
+
+## 1.1.3
+
+### Patch Changes
+
+- update "rollup" to resolve vulnerability report ([#12686](https://github.com/vercel/vercel/pull/12686))
+
 ## 1.1.2
 
 ### Patch Changes
