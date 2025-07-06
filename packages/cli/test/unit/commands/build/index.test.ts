@@ -1,4 +1,6 @@
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+// split into part 1 and 2
+
+import { beforeEach, describe, expect, it } from 'vitest';
 import fs from 'fs-extra';
 import { join } from 'path';
 import { getWriteableDirectory } from '@vercel/build-utils';
@@ -7,7 +9,6 @@ import { client } from '../../../mocks/client';
 import { defaultProject, useProject } from '../../../mocks/project';
 import { useTeams } from '../../../mocks/team';
 import { useUser } from '../../../mocks/user';
-import { execSync } from 'child_process';
 import { vi } from 'vitest';
 import { REGEX_NON_VERCEL_PLATFORM_FILES } from '@vercel/fs-detectors';
 
@@ -749,6 +750,8 @@ describe.skipIf(flakey)('build', () => {
     const configJson = await fs.readJSON(join(output, 'config.json'));
     expect(configJson.version).toBe(3);
   });
+
+
 
   it('should store Builder error in `builds.json`', async () => {
     const cwd = fixture('node-error');
@@ -1529,4 +1532,5 @@ describe.skipIf(flakey)('build', () => {
       expect(Object.keys(env).includes('VERCEL_ANALYTICS_ID')).toEqual(true);
     });
   });
+
 });
