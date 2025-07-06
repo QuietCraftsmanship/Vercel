@@ -1224,6 +1224,7 @@ export async function serverBuild({
       appNotFoundTraces && (await createPseudoLayer(appNotFoundTraces));
 
     for (const group of combinedGroups) {
+      let commonRequiredFiles: string[] | undefined = undefined;
       const groupPageFiles: { [key: string]: PseudoFile } = {};
 
       for (const page of [
@@ -1235,6 +1236,42 @@ export async function serverBuild({
           path.relative(baseDir, lambdaPages[page].fsPath)
         );
         groupPageFiles[pageFileName] = compressedPages[page];
+
+        const traceFile = getBuildTraceFile(getOriginalPagePath(page));
+        if (traceFile && !internalPages.includes(page)) {
+          const { files } = JSON.parse(
+            await fs.readFile(traceFile.fsPath, 'utf8')
+          );
+          const isAppPath = appDir && lambdaAppPaths[page];
+          const curPagesDir = isAppPath && appDir ? appDir : pagesDir;
+          const originalPagePath = getOriginalPagePath(page);
+          const pageDir = path.dirname(
+            path.join(curPagesDir, originalPagePath)
+          );
+          const normalizedBaseDir = `${baseDir}${
+            baseDir.endsWith(path.sep) ? '' : path.sep
+          }`;
+
+          const newCommonRequiredFiles: string[] = [];
+          files.forEach((file: string) => {
+            const absolutePath = path.join(pageDir, file);
+            if (
+              absolutePath.startsWith(normalizedBaseDir) &&
+              (commonRequiredFiles ? commonRequiredFiles.includes(file) : true)
+            ) {
+              let relPath = path.relative(
+                path.resolve(baseDir),
+                path.resolve(absolutePath)
+              );
+              if (!relPath.startsWith('..')) {
+                relPath = './' + relPath;
+              }
+              newCommonRequiredFiles.push(relPath);
+            }
+          });
+
+          commonRequiredFiles = newCommonRequiredFiles;
+        }
       }
 
       const updatedManifestFiles: { [name: string]: FileBlob } = {};
@@ -1312,6 +1349,17 @@ export async function serverBuild({
         }
       }
 
+
+      let launcherContent = group.isAppRouter ? appLauncher : launcher;
+
+      if (commonRequiredFiles && commonRequiredFiles.length > 0) {
+        launcherContent = launcherContent.replace(
+          '// common-files-require-target',
+          `const commonFiles = ${JSON.stringify(
+            commonRequiredFiles
+          )};await Promise.all(commonFiles.map(file => import(file)));`
+        );
+
       let launcherData = group.isAppRouter ? appLauncher : launcher;
       let preloadChunks: string[] = [];
 
@@ -1359,11 +1407,16 @@ export async function serverBuild({
               .join('\n')
           );
         }
+
       }
 
       const launcherFiles: { [name: string]: FileFsRef | FileBlob } = {
         [path.join(path.relative(baseDir, projectDir), '___next_launcher.cjs')]:
+
+          new FileBlob({ data: launcherContent }),
+
           new FileBlob({ data: launcherData }),
+
       };
       const operationType = getOperationType({ group, prerenderManifest });
 
